@@ -96,7 +96,8 @@
     .error { color: #ff5555; min-height: 20px; margin-top: 10px; }
     .hint { color: #888; margin-top: 10px; }
 
-    #game-view { display: none; flex-direction: column; align-items: center; position: relative; }
+    /* Zoomed out 10% so more of the battlefield fits on screen. */
+    #game-view { zoom: 0.9; display: none; flex-direction: column; align-items: center; position: relative; }
     /* Score panels sit at the corner matching each player's spawn: P1 TL, P2 TR, P3 BL, P4 BR. */
     .hud { display: flex; justify-content: space-between; width: 100%; }
     .hud.top { margin-bottom: 6px; }
