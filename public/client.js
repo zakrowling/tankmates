@@ -8,6 +8,7 @@
     ArrowRight: 'right', d: 'right', D: 'right',
     ' ': 'fire', Enter: 'fire',
     x: 'mine', X: 'mine',
+    Shift: 'boost',
   };
   const FIELD_COLOR = '#2d4a1c';
   const WALL_COLOR = '#a97d5d'; // RetroTanks wall colour
@@ -34,7 +35,7 @@
     lastSnapshotAt: 0,
     playing: false,
     rafId: null,
-    controls: { forward: false, back: false, left: false, right: false, fire: false, mine: false },
+    controls: { forward: false, back: false, left: false, right: false, fire: false, mine: false, boost: false },
     mines: [],
   };
 

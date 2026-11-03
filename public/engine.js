@@ -11,6 +11,7 @@
   const TANK_RADIUS = 16; // covers the drawn tracks so tanks never overlap walls
   const TANK_SPEED = 2.6; // px per tick forward
   const REVERSE_SPEED = 1.8;
+  const BOOST = 1.6; // holding Shift: top speed
   const TURN_SPEED = 5; // degrees per tick
   const BULLET_SPEED = 9;
   const BULLET_LIFE_TICKS = 2 * TICK_RATE;
@@ -141,7 +142,7 @@
 
   // ---------- Players ----------
 
-  const EMPTY_INPUT = { forward: false, back: false, left: false, right: false, fire: false, mine: false };
+  const EMPTY_INPUT = { forward: false, back: false, left: false, right: false, fire: false, mine: false, boost: false };
 
   function serializePlayer(p) {
     return {
@@ -439,7 +440,7 @@
       if (left) p.angle = normAngle(p.angle - TURN_SPEED);
       if (right) p.angle = normAngle(p.angle + TURN_SPEED);
 
-      const speed = forward ? TANK_SPEED : back ? -REVERSE_SPEED : 0;
+      const speed = (forward ? TANK_SPEED : back ? -REVERSE_SPEED : 0) * (p.input.boost ? BOOST : 1);
       p.moving = speed !== 0 || left || right;
       if (speed) {
         const dx = Math.cos(rad(p.angle)) * speed;
@@ -586,5 +587,7 @@
     circleHitsWall,
     wallRect,
     wallRects,
+    TANK_SPEED,
+    BOOST,
   };
 });

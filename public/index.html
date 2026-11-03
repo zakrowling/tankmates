@@ -11,8 +11,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      /* Dark woodland camo (seamless tile). */
-      background: #262c1a url('assets/image/camo.svg?v=__BUILD__') repeat fixed;
+      background: #0b0d08;
       color: #fff;
       font-family: 'Press Start 2P', 'Courier New', monospace;
       display: flex;
@@ -34,6 +33,12 @@
     .subtitle { color: #fff; margin-top: 4px; }
     /* Hide the logo while playing so the arena sits at the top of the screen. */
     body.in-game header { display: none; }
+    /* Dark, heavily blurred woodland camo behind everything, so it doesn't compete with the game. */
+    body::before {
+      content: ''; position: fixed; inset: -80px; z-index: -1; pointer-events: none;
+      background: #262c1a url('assets/image/camo.svg?v=__BUILD__') repeat;
+      filter: blur(28px) brightness(0.45);
+    }
     body.in-game { padding-top: 10px; }
 
     .card {
@@ -171,7 +176,7 @@
       <div class="score-tag empty" data-slot="3"></div>
       <div class="score-tag right empty" data-slot="4"></div>
     </div>
-    <p class="hint">Arrow keys or WASD to drive, Space or Enter to fire, X to drop a landmine. Grab the flag and hold it: 1 point a second, 2 per hit. First to <span id="win-score">60</span> wins.</p>
+    <p class="hint">Arrow keys or WASD to drive, hold Shift for top speed, Space or Enter to fire, X to drop a landmine. Grab the flag and hold it: 1 point a second, 2 per hit. First to <span id="win-score">60</span> wins.</p>
 
     <div id="game-over" class="card">
       <h3 id="game-over-title">GAME OVER</h3>

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {
   GameRoom, generateRoomCode, ARENA, TANK_RADIUS, WIN_SCORE, GAME_SECONDS, TICK_RATE,
   SPIN_TICKS, INVULNERABLE_TICKS, BULLET_LIFE_TICKS, circleHitsWall, wallRect, wallRects,
-  HIT_POINTS, HOLD_TICKS_PER_POINT, FLAG_START, FLAG_SPOTS, WALL_HP, MINE_ARM_TICKS,
+  HIT_POINTS, HOLD_TICKS_PER_POINT, FLAG_START, FLAG_SPOTS, WALL_HP, MINE_ARM_TICKS, TANK_SPEED, BOOST,
 } = require('../public/engine.js');
 
 // Builds a room with a manual clock and records every message it sends.
@@ -35,7 +35,7 @@ function parkFlag(room) {
   room.flag = { x: -1000, y: -1000, holder: null };
 }
 
-const press = (room, id, controls) => room.input(id, { forward: false, back: false, left: false, right: false, fire: false, mine: false, ...controls });
+const press = (room, id, controls) => room.input(id, { forward: false, back: false, left: false, right: false, fire: false, mine: false, boost: false, ...controls });
 
 // Puts two tanks on the same open row, the shooter facing the target.
 function lineUp(room, shooter, target, gap = 120) {
@@ -511,4 +511,19 @@ test('outer wall corners are solid L shapes with no gaps', () => {
   }
   // The inner quarter of a corner cell is open floor.
   assert.equal(circleHitsWall(c * 0.75, c * 0.75, 1), false);
+});
+
+test('holding boost (Shift) drives at top speed', () => {
+  const { room, run } = startedRoom(1);
+  const p = room.players.get('p1');
+  Object.assign(p, { x: 300, y: 60, angle: 0, invulnerableTicks: 0 });
+  press(room, 'p1', { forward: true });
+  run(5);
+  const normal = p.x - 300;
+  assert.ok(Math.abs(normal - 5 * TANK_SPEED) < 0.01);
+  Object.assign(p, { x: 300, y: 60, angle: 0 });
+  press(room, 'p1', { forward: true, boost: true });
+  run(5);
+  assert.ok(Math.abs(p.x - 300 - 5 * TANK_SPEED * BOOST) < 0.01);
+  assert.ok(BOOST > 1);
 });
