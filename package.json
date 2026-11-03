@@ -1,0 +1,13 @@
+{
+  "name": "tankmates",
+  "version": "1.0.0",
+  "description": "Online multiplayer tank battles for up to 4 mates, based on RetroTanks / Atari Combat. Peer-to-peer, runs on GitHub Pages",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.3.0"
+  }
+}

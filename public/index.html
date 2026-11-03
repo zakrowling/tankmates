@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tankmates</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cg fill=%22%23cf5353%22%3E%3Crect x=%222%22 y=%223%22 width=%2222%22 height=%226%22/%3E%3Crect x=%222%22 y=%2223%22 width=%2222%22 height=%226%22/%3E%3Crect x=%228%22 y=%229%22 width=%2214%22 height=%2214%22/%3E%3Crect x=%2215%22 y=%2214%22 width=%2216%22 height=%224%22/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #000;
+      /* Subtle glow in the Combat palette: olive field up top, red and blue tanks in the lower corners. */
+      background-image:
+        radial-gradient(ellipse 70% 50% at 50% -10%, rgba(110, 156, 66, 0.35), transparent 70%),
+        radial-gradient(ellipse 50% 45% at 0% 100%, rgba(207, 83, 83, 0.22), transparent 70%),
+        radial-gradient(ellipse 50% 45% at 100% 100%, rgba(130, 134, 255, 0.2), transparent 70%);
+      background-attachment: fixed;
+      color: #fff;
+      font-family: 'Press Start 2P', 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 40px 20px 20px;
+      font-size: 10px;
+      line-height: 1.8;
+    }
+    header { text-align: center; margin-bottom: 20px; }
+    #logo {
+      font-size: 40px; line-height: 1.2; color: #fafd00; letter-spacing: 2px;
+      text-shadow: 4px 4px 0 #cf5353, 8px 8px 0 #8286ff;
+    }
+    @media (max-width: 520px) { #logo { font-size: 24px; } }
+    .subtitle { color: #fff; margin-top: 4px; }
+    /* Hide the logo while playing so the arena sits at the top of the screen. */
+    body.in-game header { display: none; }
+
+    .card {
+      background: #12160c; border: 2px solid #a97d5d; border-radius: 12px;
+      padding: 24px; width: 100%; max-width: 560px; text-align: center;
+    }
+    .btn {
+      background: #ffe600; color: #000; border: none; padding: 12px 20px;
+      font-family: inherit; font-size: 11px; border-radius: 6px; cursor: pointer;
+      width: 100%; margin-top: 10px;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .btn.secondary { background: #00d2ff; }
+    .btn.outline { background: transparent; color: #00d2ff; border: 2px solid #00d2ff; }
+    .btn.outline:hover { background: rgba(0, 210, 255, 0.1); }
+    .btn.ghost { background: transparent; color: #888; border: 1px solid #333; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    input[type="text"] {
+      width: 100%; padding: 12px; font-family: inherit; font-size: 16px; text-align: center;
+      text-transform: uppercase; background: #000; border: 1px solid #a97d5d;
+      color: #ffe600; border-radius: 6px; margin: 10px 0; letter-spacing: 6px;
+    }
+    .or { margin: 16px 0; color: #555; }
+    .room-display {
+      font-size: 26px; letter-spacing: 8px; color: #00ffff;
+      margin: 12px 0; padding: 12px; background: #000; border-radius: 8px;
+    }
+    .room-display.long { font-size: 16px; letter-spacing: 3px; }
+    .share { display: flex; gap: 8px; align-items: center; }
+    .share input[type="text"] {
+      flex: 1; margin: 0; font-size: 9px; letter-spacing: 0; text-transform: none; text-align: left; padding: 10px;
+    }
+    .share .btn { width: auto; margin: 0; padding: 10px 14px; }
+    .share-hint { margin-bottom: 12px; font-size: 8px; }
+    .room-label { margin-top: 16px; }
+    #lobby-card.link-room .room-details,
+    #lobby-card.link-room #setup-view { display: none; }
+    #lobby-card:not(.link-room) .link-only { display: none; }
+    .player-list { list-style: none; text-align: left; margin: 15px 0; }
+    .player-item {
+      padding: 8px 12px; margin: 6px 0; border-radius: 4px;
+      display: flex; justify-content: space-between;
+    }
+    .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 16px 0; }
+    .slot {
+      background: #000; border: 2px dashed #3a3a2a; border-radius: 10px;
+      padding: 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+      min-height: 130px; justify-content: center; color: #444; font-size: 9px;
+    }
+    .slot.filled { border-style: solid; }
+    .slot.you { box-shadow: 0 0 12px currentColor; }
+    .slot canvas { width: 64px; height: 64px; background: transparent; }
+    .slot .slot-num { color: #666; font-size: 8px; }
+    .slot .slot-name { font-size: 10px; }
+    .slot .slot-tag { font-size: 7px; color: #aaa; min-height: 12px; }
+    .error { color: #ff5555; min-height: 20px; margin-top: 10px; }
+    .hint { color: #888; margin-top: 10px; }
+
+    #game-view { display: none; flex-direction: column; align-items: center; position: relative; }
+    /* Score panels sit at the corner matching each player's spawn: P1 TL, P2 TR, P3 BL, P4 BR. */
+    .hud { display: flex; justify-content: space-between; width: 100%; }
+    .hud.top { margin-bottom: 6px; }
+    .hud.bottom { margin-top: 6px; }
+    .score-tag {
+      padding: 4px 10px; border-radius: 6px; background: #12160c; border: 2px solid currentColor;
+      display: flex; align-items: center; gap: 10px; white-space: nowrap;
+    }
+    .score-tag.right { flex-direction: row-reverse; }
+    .score-tag.empty { visibility: hidden; }
+    .score-tag .tag-name { font-size: 8px; }
+    .score-tag .tag-score { font-size: 10px; color: #fff; }
+    canvas { background: #000; border-radius: 6px; image-rendering: pixelated; }
+    /* The arena is wider than most game boards; shrink it to fit smaller screens. */
+    #game-canvas { max-width: 100%; height: auto; }
+
+    #game-over {
+      display: none; position: absolute; inset: 40px 0 auto 0; margin: auto;
+      width: 320px; background: rgba(0, 0, 0, 0.92);
+    }
+    #game-over h3 { color: #ffe600; margin-bottom: 12px; }
+
+    /* Retro CRT scanlines over the arena (toggle with X), as in RetroTanks. */
+    .arena-wrap { position: relative; max-width: 100%; line-height: 0; }
+    body.scanlines .arena-wrap::after {
+      content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 6px;
+      background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.28) 0 1px, transparent 1px 3px);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="logo">TANKMATES</h1>
+    <p class="subtitle">Online multiplayer for up to 4 mates</p>
+  </header>
+
+  <div id="lobby-card" class="card">
+    <div class="slots" id="slots"></div>
+
+    <div id="setup-view">
+      <button class="btn" id="create-btn">Create Room</button>
+      <div class="or">- OR -</div>
+      <input type="text" id="room-input" maxlength="4" placeholder="CODE" autocomplete="off">
+      <button class="btn secondary" id="join-btn">Join Room</button>
+    </div>
+    <p class="hint" id="connecting-hint" style="display:none;">Connecting...</p>
+
+    <div id="room-view" style="display:none;">
+      <button class="btn" id="start-btn">Start Game</button>
+      <button class="btn outline link-only" id="home-btn">Create or join a new room</button>
+      <p class="hint" id="reconnect-hint" style="display:none;"></p>
+      <!-- Room code details are hidden for link rooms like /tankmates/mate -->
+      <div class="room-details">
+        <div class="room-label">Room Code</div>
+        <div class="room-display" id="room-code-txt">----</div>
+        <div class="share">
+          <input type="text" id="share-link" readonly aria-label="Invite link">
+          <button class="btn secondary" id="copy-btn">Copy</button>
+        </div>
+        <p class="hint share-hint">Send this link to your mates. They join straight away, no code needed.</p>
+        <button class="btn ghost" id="leave-btn">Leave Room</button>
+      </div>
+    </div>
+
+    <p class="error" id="error-msg" role="alert"></p>
+  </div>
+
+  <div id="game-view">
+    <div class="hud top">
+      <div class="score-tag empty" data-slot="1"></div>
+      <div class="score-tag right empty" data-slot="2"></div>
+    </div>
+    <div class="arena-wrap"><canvas id="game-canvas" width="960" height="576"></canvas></div>
+    <div class="hud bottom">
+      <div class="score-tag empty" data-slot="3"></div>
+      <div class="score-tag right empty" data-slot="4"></div>
+    </div>
+    <p class="hint">Arrow keys or WASD to drive, Space or Enter to fire. First to <span id="win-score">10</span> hits wins. X toggles scanlines.</p>
+
+    <div id="game-over" class="card">
+      <h3 id="game-over-title">GAME OVER</h3>
+      <ul class="player-list" id="standings"></ul>
+      <button class="btn" id="again-btn">Play Again</button>
+      <button class="btn ghost" id="exit-btn">Back to Lobby</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="config.js?v=__BUILD__"></script>
+  <script src="arena.js?v=__BUILD__"></script>
+  <script src="engine.js?v=__BUILD__"></script>
+  <script src="net.js?v=__BUILD__"></script>
+  <script src="client.js?v=__BUILD__"></script>
+</body>
+</html>
