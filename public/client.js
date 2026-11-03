@@ -381,7 +381,7 @@
     for (let x = x0 + 1; x < x1; x += 1.6) line(g, x, y0 + 0.5, x, y1 - 0.5, shade(base, -0.6), 0.5);
   }
 
-  // Team markings: a coloured band on the turret bustle and a small chevron on the hull rear.
+  // Team marking: a coloured band across the back of the turret.
   function teamBand(g, build, team) {
     g.save();
     build();
@@ -392,16 +392,6 @@
     g.restore();
   }
 
-  function chevron(g, x, y, team) {
-    g.strokeStyle = team;
-    g.lineWidth = 1.1;
-    g.beginPath();
-    g.moveTo(x - 2.2, y + 1.2);
-    g.lineTo(x, y - 0.8);
-    g.lineTo(x + 2.2, y + 1.2);
-    g.stroke();
-  }
-
   // Green: Leopard 2A7 style. Long hull with full skirts, wedge-armour turret front, NATO camo.
   function drawLeopard(g, team) {
     const base = '#4c5b34';
@@ -410,7 +400,6 @@
     paintBody(g, () => poly(g, [[8, 12], [28, 12], [31, 15], [31, 52], [5, 52], [5, 15]]), base, { camo, seed: 11, blobs: 10 });
     for (let y = 18; y < 48; y += 7) { line(g, 5, y, 9, y, shade(base, -0.55)); line(g, 27, y, 31, y, shade(base, -0.55)); }
     engineDeck(g, 11, 25, 44, 50.5, base);
-    chevron(g, 18, 50, team);
     hatch(g, 13, 15.5, 1.6, base); // driver
     // Turret with arrowhead wedge armour either side of the gun.
     const turret = () => poly(g, [[17, 18], [12, 17], [8, 24], [7, 37], [10, 41], [26, 41], [29, 37], [28, 24], [24, 17], [19, 18]]);
@@ -434,7 +423,6 @@
     paintBody(g, () => poly(g, [[8, 12], [28, 12], [31, 15], [31, 52], [5, 52], [5, 15]]), base, { camo: ['#b39a6a', '#cdb586'], seed: 31, blobs: 8, blobSize: 7 });
     for (let y = 17; y < 49; y += 5) { line(g, 5, y, 9, y, shade(base, -0.4)); line(g, 27, y, 31, y, shade(base, -0.4)); }
     engineDeck(g, 11, 25, 45, 51, base);
-    chevron(g, 18, 50.5, team);
     hatch(g, 18, 15, 1.6, base); // driver
     // Bustle rack (cage) behind the turret.
     g.strokeStyle = shade(base, -0.55);
@@ -470,7 +458,6 @@
     line(g, 9, 19.5, 27, 19.5, shade(base, -0.5));
     // Long engine deck with slats.
     engineDeck(g, 10, 26, 42, 51.5, base);
-    chevron(g, 18, 51, team);
     const turret = () => poly(g, [[13, 23], [23, 23], [26, 27], [26, 39], [23, 41], [13, 41], [10, 39], [10, 27]]);
     paintBody(g, turret, shade(base, 0.08), { camo: ['#8e9498'], seed: 47, blobs: 3, blobSize: 5 });
     teamBand(g, () => poly(g, [[10, 37], [26, 37], [26, 39.5], [10, 39.5]]), team);
@@ -491,7 +478,6 @@
     paintBody(g, () => poly(g, [[9, 12], [27, 12], [31, 16], [31, 51], [28, 53], [8, 53], [5, 51], [5, 16]]), base, { camo: ['#5a6571', '#747f8b'], seed: 53, blobs: 8, blobSize: 6 });
     for (let y = 18; y < 50; y += 8) { line(g, 5, y, 9, y, shade(base, -0.5)); line(g, 27, y, 31, y, shade(base, -0.5)); }
     engineDeck(g, 11, 25, 45, 51, base);
-    chevron(g, 18, 50.5, team);
     hatch(g, 18, 15.5, 1.5, base);
     const turret = () => poly(g, [[11, 21], [25, 21], [29, 27], [28.5, 38], [25, 41], [11, 41], [7.5, 38], [7, 27]]);
     paintBody(g, turret, shade(base, 0.06), { camo: ['#5a6571'], seed: 59, blobs: 4, blobSize: 5 });
