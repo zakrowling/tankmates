@@ -1186,7 +1186,7 @@
         for (let i = 0; i < 10; i++) emitSmoke(ev.x, ev.y, now, true);
         addScorch(ev.x, ev.y, true);
         playSound('explosion', ev.x, ev.y, ev.id === state.playerId ? 1.4 : 1);
-        if (ev.hadFlag) playSound(ev.id === state.playerId ? 'flagLost' : 'flagRespawn');
+        if (ev.hadFlag) playSound(ev.id === state.playerId ? 'flagLost' : 'flagRespawn', ev.x, ev.y);
       } else if (ev.type === 'wallHit') {
         onWallHit(ev, now);
       } else if (ev.type === 'impact') {

@@ -296,7 +296,7 @@ test('only one tank can hold the flag', () => {
   assert.equal(b.hasFlag, false);
 });
 
-test('shooting the flag holder scores the hit and respawns the flag away from tanks', () => {
+test('shooting the flag holder makes them drop it where they were hit', () => {
   const { room, run, events } = startedRoom(2);
   const [a, b] = ['p1', 'p2'].map((id) => room.players.get(id));
   lineUp(room, a, b);
@@ -308,15 +308,19 @@ test('shooting the flag holder scores the hit and respawns the flag away from ta
   run(15);
   assert.equal(b.status, 'hit');
   assert.equal(b.hasFlag, false);
-  assert.equal(room.flag.holder, null);
   assert.equal(events('hit')[0].hadFlag, true);
-  assert.equal(events('flagRespawn').length, 1);
-  for (const t of room.players.values()) {
-    if (t.status === 'alive') assert.ok(Math.hypot(t.x - room.flag.x, t.y - room.flag.y) >= 200);
-  }
-  assert.equal(circleHitsWall(room.flag.x, room.flag.y, 16), false);
-});
+  const drop = events('flagDropped')[0];
+  assert.ok(drop);
+  assert.deepEqual([room.flag.x, room.flag.y, room.flag.holder], [drop.x, drop.y, null]);
+  assert.ok(Math.abs(drop.x - b.x) < 1 && Math.abs(drop.y - b.y) < 1, 'dropped at the hit tank');
 
+  // The spinning tank can't grab it back, but the shooter can drive over and take it.
+  run(5);
+  assert.equal(room.flag.holder, null);
+  Object.assign(a, { x: drop.x - 10, y: drop.y });
+  run(1);
+  assert.equal(room.flag.holder, 'p1');
+});
 test('a holder leaving the room respawns the flag', () => {
   const { room, run } = startedRoom(2);
   const b = room.players.get('p2');

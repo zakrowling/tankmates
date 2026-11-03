@@ -21,7 +21,7 @@
   const SPIN_TICKS = Math.round(1.2 * TICK_RATE); // a hit tank spins out before respawning
   const SPIN_SPEED = 15;
   const INVULNERABLE_TICKS = 2 * TICK_RATE;
-  // Capture the flag: hold the flag to score; shooting the holder knocks it to a new spot.
+  // Capture the flag: hold the flag to score; shooting the holder makes them drop it on the spot.
   const WIN_SCORE = 60;
   const WALL_HP = 3; // shots for an interior brick block to crumble away; the outer wall can't be destroyed
   const HOLD_TICKS_PER_POINT = TICK_RATE; // 1 point per second holding the flag
@@ -306,6 +306,13 @@
       if (events) events.push({ type: 'flagRespawn', x: spot.x, y: spot.y });
     }
 
+    // The holder was shot: the flag falls where their tank was hit, ready for anyone to grab.
+    dropFlag(holder, events) {
+      holder.hasFlag = false;
+      this.flag = { x: holder.x, y: holder.y, holder: null };
+      events.push({ type: 'flagDropped', x: holder.x, y: holder.y });
+    }
+
     stepFlag(events) {
       const holder = this.flag.holder && this.players.get(this.flag.holder);
       if (holder) {
@@ -461,7 +468,7 @@
             t.spinTicks = SPIN_TICKS;
             t.moving = false;
             events.push({ type: 'hit', by: b.owner, id: t.id, x: t.x, y: t.y, hadFlag: !!t.hasFlag });
-            if (t.hasFlag) this.respawnFlag(events);
+            if (t.hasFlag) this.dropFlag(t, events);
             return false;
           }
         }
