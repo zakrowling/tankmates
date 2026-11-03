@@ -289,7 +289,7 @@
       if (!this.nodes) return;
       const t = audioCtx.currentTime;
       const { out, saw, sub, lp, lfo, lfoGain } = this.nodes;
-      const level = !alive ? 0.0001 : moving ? 0.22 : 0.09;
+      const level = !alive ? 0.0001 : moving ? 0.13 : 0.05; // kept low so it sits under the drums and effects
       out.gain.setTargetAtTime(level, t, 0.15);
       saw.frequency.setTargetAtTime(moving ? 58 : 38, t, 0.25);
       sub.frequency.setTargetAtTime(moving ? 29 : 19, t, 0.25);
