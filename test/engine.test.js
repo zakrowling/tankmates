@@ -15,6 +15,7 @@ function makeRoom() {
     send: (to, ev, data) => sent.push({ to, ev, data }),
     setInterval: (fn) => { tickFn = fn; return 1; },
     clearInterval: () => { tickFn = null; },
+    shuffleMap: false,
   });
   const run = (n = 1) => { for (let i = 0; i < n && tickFn; i++) tickFn(); };
   const last = (ev) => [...sent].reverse().find((m) => m.ev === ev);
@@ -526,4 +527,93 @@ test('holding boost (Shift) drives at top speed', () => {
   run(5);
   assert.ok(Math.abs(p.x - 300 - 5 * TANK_SPEED * BOOST) < 0.01);
   assert.ok(BOOST > 1);
+});
+
+// Small deterministic random generator for repeatable shuffles.
+function seeded(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Can a tank drive from a to b? Flood fill on a half-cell lattice, using the real collision test.
+function drivable(walls, a, b) {
+  const step = ARENA.cell / 2;
+  const key = (x, y) => `${x},${y}`;
+  const seen = new Set([key(a.x, a.y)]);
+  const queue = [[a.x, a.y]];
+  while (queue.length) {
+    const [x, y] = queue.shift();
+    if (Math.abs(x - b.x) < step && Math.abs(y - b.y) < step) return true;
+    for (const [nx, ny] of [[x + step, y], [x - step, y], [x, y + step], [x, y - step]]) {
+      if (seen.has(key(nx, ny)) || circleHitsWall(nx, ny, TANK_RADIUS, walls)) continue;
+      seen.add(key(nx, ny));
+      queue.push([nx, ny]);
+    }
+  }
+  return false;
+}
+
+test('map shuffle nudges a few shapes but keeps the lanes, centre and spacing', () => {
+  const { QUARTER, shuffleQuarter } = require('../public/arena.js');
+  let changed = 0;
+  for (let seed = 1; seed <= 300; seed++) {
+    const q = shuffleQuarter(QUARTER, seeded(seed));
+    assert.equal(q.length, QUARTER.length);
+    q.forEach((row, y) => assert.equal(row.length, QUARTER[y].length));
+    // Same amount of wall, just moved around.
+    const count = (rows) => rows.join('').split('#').length;
+    assert.equal(count(q), count(QUARTER));
+    // Border, outer lanes and the centre bunker are untouched.
+    for (let y = 0; y < QUARTER.length; y++) {
+      for (let x = 0; x < QUARTER[0].length; x++) {
+        const fixed = x === 0 || y === 0 || x < 4 || y < 4 || x >= QUARTER[0].length - 2 || y >= QUARTER.length - 2;
+        if (fixed && QUARTER[y][x] !== q[y][x]) {
+          // Only the centre bunker's region may differ... and it must not.
+          assert.fail(`fixed cell ${x},${y} changed (seed ${seed})`);
+        }
+      }
+    }
+    if (q.join() !== QUARTER.join()) changed++;
+  }
+  assert.ok(changed > 250, `most rounds get a different layout (${changed}/300)`);
+});
+
+test('every shuffled map lets each tank reach the flag and every other spawn', () => {
+  const { QUARTER, shuffleQuarter, buildArena } = require('../public/arena.js');
+  for (let seed = 1; seed <= 300; seed++) {
+    const { walls } = buildArena(shuffleQuarter(QUARTER, seeded(seed)));
+    for (const spawn of ARENA.spawns) {
+      assert.ok(!circleHitsWall(spawn.x, spawn.y, TANK_RADIUS, walls), `spawn clear (seed ${seed})`);
+      assert.ok(drivable(walls, spawn, FLAG_START), `spawn reaches the flag (seed ${seed})`);
+    }
+    for (let i = 1; i < 4; i++) assert.ok(drivable(walls, ARENA.spawns[0], ARENA.spawns[i]), `spawns connected (seed ${seed})`);
+  }
+});
+
+test('each new game uses a freshly shuffled map, sent to every player', () => {
+  const sent = [];
+  const room = new GameRoom('SHUF', {
+    broadcast: (ev, data) => sent.push({ ev, data }),
+    send: () => {},
+    setInterval: () => 1,
+    clearInterval: () => {},
+    random: seeded(42),
+  });
+  room.join('p1');
+  room.start('p1');
+  const first = room.walls.map((r) => r.join('')).join('/');
+  assert.notEqual(first, ARENA.walls.map((r) => r.join('')).join('/'), 'differs from the standard layout');
+  const payload = sent.filter((m) => m.ev === 'gameStarted').pop().data;
+  assert.deepEqual(payload.arena.walls, room.walls);
+  // Flag respawn spots follow the new walls.
+  assert.ok(room.flagSpots.every((s) => !circleHitsWall(s.x, s.y, 10, room.walls)));
+  room.started = false;
+  room.start('p1');
+  assert.notEqual(room.walls.map((r) => r.join('')).join('/'), first, 'the next game is different again');
 });

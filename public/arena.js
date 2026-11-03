@@ -59,5 +59,70 @@
     return { layout, walls, cols, rows, cell: CELL, width, height, spawns };
   }
 
-  return { QUARTER, CELL, buildArena };
+  // A lightly shuffled copy of a quarter layout: some of the inner brick shapes are nudged by a
+  // cell or two, so every round feels a little different but plays much the same. Because the
+  // quarter is mirrored, the arena stays fair for all four corners. Rules for a moved shape:
+  // - it stays out of the outer lanes (first 4 rows/columns), so spawns and the perimeter stay open;
+  // - it stays 2+ cells from the mirror lines, keeping the centre channels open;
+  // - it keeps at least 2 open cells (wider than a tank) between itself and every other wall.
+  // Shapes touching the mirror lines (the centre bunker) never move.
+  function shuffleQuarter(quarter = QUARTER, rand = Math.random, { chance = 0.6, maxShift = 2 } = {}) {
+    const rows = quarter.length;
+    const cols = quarter[0].length;
+    const grid = quarter.map((row) => [...row]);
+    const isInner = (x, y) => x > 0 && y > 0;
+    const seen = new Set();
+    const shapes = [];
+    for (let y = 1; y < rows; y++) {
+      for (let x = 1; x < cols; x++) {
+        if (grid[y][x] !== '#' || seen.has(`${x},${y}`)) continue;
+        const cells = [];
+        const stack = [[x, y]];
+        seen.add(`${x},${y}`);
+        while (stack.length) {
+          const [cx, cy] = stack.pop();
+          cells.push([cx, cy]);
+          for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
+            if (ny < rows && nx < cols && isInner(nx, ny) && grid[ny][nx] === '#' && !seen.has(`${nx},${ny}`)) {
+              seen.add(`${nx},${ny}`);
+              stack.push([nx, ny]);
+            }
+          }
+        }
+        shapes.push(cells);
+      }
+    }
+
+    const MIN = 4;
+    const maxX = cols - 3;
+    const maxY = rows - 3;
+    const movable = (cells) => cells.every(([x, y]) => x <= maxX && y <= maxY);
+    const offsets = [];
+    for (let dy = -maxShift; dy <= maxShift; dy++) {
+      for (let dx = -maxShift; dx <= maxShift; dx++) if (dx || dy) offsets.push([dx, dy]);
+    }
+
+    for (const cells of shapes) {
+      if (!movable(cells) || rand() >= chance) continue;
+      cells.forEach(([x, y]) => { grid[y][x] = '.'; });
+      const order = offsets.map((o) => [rand(), o]).sort((a, b) => a[0] - b[0]).map(([, o]) => o);
+      const fits = ([dx, dy]) => cells.every(([x, y]) => {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < MIN || ny < MIN || nx > maxX || ny > maxY) return false;
+        for (let oy = -2; oy <= 2; oy++) {
+          for (let ox = -2; ox <= 2; ox++) {
+            const row = grid[ny + oy];
+            if (row && row[nx + ox] === '#') return false;
+          }
+        }
+        return true;
+      });
+      const [dx, dy] = order.find(fits) || [0, 0];
+      cells.forEach(([x, y]) => { grid[y + dy][x + dx] = '#'; });
+    }
+    return grid.map((row) => row.join(''));
+  }
+
+  return { QUARTER, CELL, buildArena, shuffleQuarter };
 });

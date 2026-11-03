@@ -5,7 +5,7 @@
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./arena.js'));
   else root.TankmatesEngine = factory(root.TankmatesArena);
-})(typeof self !== 'undefined' ? self : this, ({ buildArena }) => {
+})(typeof self !== 'undefined' ? self : this, ({ buildArena, shuffleQuarter, QUARTER }) => {
   const TICK_RATE = 30;
   const MAX_PLAYERS = 4;
   const TANK_RADIUS = 16; // covers the drawn tracks so tanks never overlap walls
@@ -129,14 +129,18 @@
   const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 
   // Every open spot the flag may appear on (cell centres clear of walls).
-  const FLAG_SPOTS = [];
-  for (let cy = 0; cy < ARENA.rows; cy++) {
-    for (let cx = 0; cx < ARENA.cols; cx++) {
-      const x = (cx + 0.5) * ARENA.cell;
-      const y = (cy + 0.5) * ARENA.cell;
-      if (!circleHitsWall(x, y, FLAG_CLEARANCE)) FLAG_SPOTS.push({ x, y });
+  function flagSpotsFor(walls) {
+    const spots = [];
+    for (let cy = 0; cy < ARENA.rows; cy++) {
+      for (let cx = 0; cx < ARENA.cols; cx++) {
+        const x = (cx + 0.5) * ARENA.cell;
+        const y = (cy + 0.5) * ARENA.cell;
+        if (!circleHitsWall(x, y, FLAG_CLEARANCE, walls)) spots.push({ x, y });
+      }
     }
+    return spots;
   }
+  const FLAG_SPOTS = flagSpotsFor(ARENA.walls);
   // Each game starts with the flag in the channel through the centre bunker.
   const FLAG_START = { x: ARENA.width / 2, y: ARENA.height / 2 };
 
@@ -180,6 +184,9 @@
       this.send = hooks.send;
       this.setInterval = hooks.setInterval || ((fn, ms) => setInterval(fn, ms));
       this.clearInterval = hooks.clearInterval || ((id) => clearInterval(id));
+      // Each game nudges a few wall shapes around (tests turn this off for a fixed layout).
+      this.shuffleMap = hooks.shuffleMap !== false;
+      this.random = hooks.random || Math.random;
       this.hostId = null;
       this.players = new Map();
       this.bullets = [];
@@ -194,9 +201,12 @@
     }
 
     // Each room has its own copy of the walls, with hit points for the destructible brick blocks.
-    resetWalls() {
-      this.walls = ARENA.walls.map((row) => [...row]);
-      this.wallHp = ARENA.walls.map((row, cy) => row.map((t, cx) => (t === 1 && !isOuterCell(cx, cy) ? WALL_HP : 0)));
+    // shuffle: start from a lightly rearranged layout (a new game) rather than the standard one.
+    resetWalls(shuffle = false) {
+      const base = shuffle ? buildArena(shuffleQuarter(QUARTER, this.random)).walls : ARENA.walls;
+      this.walls = base.map((row) => [...row]);
+      this.wallHp = base.map((row, cy) => row.map((t, cx) => (t === 1 && !isOuterCell(cx, cy) ? WALL_HP : 0)));
+      this.flagSpots = shuffle ? flagSpotsFor(this.walls) : FLAG_SPOTS;
     }
 
     get size() {
@@ -252,7 +262,7 @@
       this.mines = [];
       this.started = true;
       this.flag = { ...FLAG_START, holder: null };
-      this.resetWalls();
+      this.resetWalls(this.shuffleMap);
       this.players.forEach((p) => {
         p.score = 0;
         this.resetPlayer(p);
@@ -346,10 +356,11 @@
     respawnFlag(events) {
       const tanks = [...this.players.values()].filter((p) => p.status === 'alive');
       const clearance = (s) => Math.min(Infinity, ...tanks.map((t) => dist2(t, s)));
-      const far = FLAG_SPOTS.filter((s) => clearance(s) >= FLAG_MIN_TANK_DISTANCE ** 2);
+      const spots = this.flagSpots;
+      const far = spots.filter((s) => clearance(s) >= FLAG_MIN_TANK_DISTANCE ** 2);
       const spot = far.length
         ? far[randInt(far.length)]
-        : FLAG_SPOTS.reduce((best, s) => (clearance(s) > clearance(best) ? s : best), FLAG_SPOTS[0]);
+        : spots.reduce((best, s) => (clearance(s) > clearance(best) ? s : best), spots[0]);
       this.players.forEach((p) => { p.hasFlag = false; });
       this.flag = { x: spot.x, y: spot.y, holder: null };
       if (events) events.push({ type: 'flagRespawn', x: spot.x, y: spot.y });
