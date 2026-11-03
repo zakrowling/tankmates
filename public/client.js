@@ -227,6 +227,14 @@
       const t = ac.currentTime;
       [392, 523, 659, 784, 659, 784].forEach((f, i) => osc(ac, out, { type: 'square', from: f, t0: t + i * 0.13, dur: 0.12, peak: 0.07 }));
     },
+    // Countdown tick for the last 10 seconds: a sharp, loud clock tick (higher on the final 3).
+    tick(ac, out, secs) {
+      const t = ac.currentTime;
+      const f = secs <= 3 ? 1760 : 1320;
+      noiseBurst(ac, out, { t0: t, dur: 0.03, peak: 0.5, type: 'highpass', from: 4000, attack: 0.001 });
+      osc(ac, out, { type: 'square', from: f, t0: t, dur: 0.07, peak: 0.28, attack: 0.002 });
+      osc(ac, out, { type: 'sine', from: f / 2, t0: t, dur: 0.09, peak: 0.3, attack: 0.002 });
+    },
     end(ac, out) {
       const t = ac.currentTime;
       [784, 659, 523, 392].forEach((f, i) => osc(ac, out, { type: 'triangle', from: f, t0: t + i * 0.2, dur: 0.18, peak: 0.12 }));
@@ -1128,44 +1136,7 @@
       const [a, b] = span(y, arena.height);
       if (arena.walls[y][0] === 1) g.fillRect(edge, a, 3, b - a);
     }
-    paintTunnelMouths(g, arena);
     return layer;
-  }
-
-  // Tunnels through the outer wall: a dark mouth fading into the ground, so they read as passages.
-  function paintTunnelMouths(g, arena) {
-    const c = arena.cell;
-    const depth = c * 1.25;
-    const runs = (cells) => {
-      const out = [];
-      cells.forEach((open, i) => {
-        if (!open) return;
-        if (out.length && out[out.length - 1][1] === i - 1) out[out.length - 1][1] = i;
-        else out.push([i, i]);
-      });
-      return out;
-    };
-    const top = runs(arena.walls[0].map((v) => v === 0));
-    const left = runs(arena.walls.map((row) => row[0] === 0));
-    const mouth = (x0, y0, x1, y1, gx0, gy0, gx1, gy1) => {
-      const grad = g.createLinearGradient(gx0, gy0, gx1, gy1);
-      grad.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
-      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      g.fillStyle = grad;
-      g.fillRect(x0, y0, x1 - x0, y1 - y0);
-    };
-    top.forEach(([a, b]) => {
-      const x0 = a * c;
-      const x1 = (b + 1) * c;
-      mouth(x0, 0, x1, depth, 0, 0, 0, depth);
-      mouth(x0, arena.height - depth, x1, arena.height, 0, arena.height, 0, arena.height - depth);
-    });
-    left.forEach(([a, b]) => {
-      const y0 = a * c;
-      const y1 = (b + 1) * c;
-      mouth(0, y0, depth, y1, 0, 0, depth, 0);
-      mouth(arena.width - depth, y0, arena.width, y1, arena.width, 0, arena.width - depth, 0);
-    });
   }
 
   // Soft drop shadow cast by the walls, rebuilt whenever a wall changes.
@@ -1272,6 +1243,7 @@
     state.arena = payload.arena;
     state.tickMs = 1000 / payload.tickRate;
     state.ticksLeft = payload.ticksLeft;
+    state.lastTimerSecs = undefined;
     state.winScore = payload.winScore;
     state.fieldLayer = buildFieldLayer(payload.arena);
     state.wallLayer = buildWallLayer(payload.arena);
@@ -1629,6 +1601,15 @@
     const el = $('timer');
     if (el.textContent !== text) el.textContent = text;
     el.classList.toggle('low', secs <= 10);
+    if (secs !== state.lastTimerSecs) {
+      if (state.playing && secs >= 1 && secs <= 10 && state.lastTimerSecs !== undefined) {
+        playSound('tick', undefined, undefined, secs);
+        el.classList.remove('pulse');
+        void el.offsetWidth; // restart the animation
+        el.classList.add('pulse');
+      }
+      state.lastTimerSecs = secs;
+    }
   }
 
   // The host runs the game; everyone else interpolates between the last two snapshots.

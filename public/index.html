@@ -110,7 +110,13 @@
     .hud-group { display: flex; gap: 10px; }
     .hud-group.right { justify-content: flex-end; }
     #timer { font-size: 14px; color: #fff; font-variant-numeric: tabular-nums; }
-    #timer.low { color: #ff5555; }
+    /* Last 10 seconds: bright red with a pulse on every tick. */
+    #timer.low { color: #ff3b30; }
+    #timer.pulse { animation: timer-pulse 0.45s ease-out; }
+    @keyframes timer-pulse {
+      from { transform: scale(1.4); text-shadow: 0 0 10px rgba(255, 59, 48, 0.9); }
+      to { transform: scale(1); text-shadow: none; }
+    }
     .score-tag {
       padding: 4px 10px; border-radius: 6px; background: #12160c; border: 2px solid currentColor;
       display: flex; align-items: center; gap: 10px; white-space: nowrap;
