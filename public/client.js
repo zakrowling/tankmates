@@ -1236,10 +1236,6 @@
   window.addEventListener('keydown', (e) => {
     if (!state.playing) return;
     const control = KEY_TO_CONTROL[e.key];
-    if (e.key === 'x' || e.key === 'X') {
-      document.body.classList.toggle('scanlines');
-      return;
-    }
     if (!control) return;
     e.preventDefault();
     setControl(control, true);

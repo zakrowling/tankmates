@@ -13,7 +13,7 @@ Based on [RetroTanks](https://github.com/enesser/retroTanks) by Eric J Nesser (M
 - **Winning**: first to 60 points, or the highest score when the 3-minute timer runs out.
 - **Battlefield**: a 1200×720 mirrored arena (layout in [`public/arena.js`](public/arena.js)) with churned mud and grass and old tread marks, weathered red-brick walls, and a concrete perimeter. Shooting a brick block knocks bricks out of it; after 3 hits it crumbles away, leaving rubble and opening a new path (walls rebuild each game). Hits and shell impacts leave scorch marks for the rest of the game, and hit tanks pour smoke while they spin out.
 - **Sound**: all synthesized with Web Audio: a diesel engine rumble and track clatter that revs as you drive, cannon fire, shell impacts, and big explosions with debris, panned and faded by distance. Plus flag pickup/drop jingles and a bugle start.
-- **Retro touches**: name bubbles (yours is yellow), tracers and muzzle flashes, and X toggles CRT scanlines.
+- **Retro touches**: name bubbles (yours is yellow), tracers and muzzle flashes.
 - **Logo**: put your title image at [`public/assets/image/tankmates-logo.png`](public/assets/image/README.md) and it replaces the text title automatically.
 
 ## How it works

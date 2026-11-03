@@ -120,13 +120,7 @@
       width: 320px; background: rgba(0, 0, 0, 0.92);
     }
     #game-over h3 { color: #ffe600; margin-bottom: 12px; }
-
-    /* Retro CRT scanlines over the arena (toggle with X), as in RetroTanks. */
     .arena-wrap { position: relative; max-width: 100%; line-height: 0; }
-    body.scanlines .arena-wrap::after {
-      content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 6px;
-      background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.28) 0 1px, transparent 1px 3px);
-    }
   </style>
 </head>
 <body>
@@ -181,7 +175,7 @@
       <div class="score-tag empty" data-slot="3"></div>
       <div class="score-tag right empty" data-slot="4"></div>
     </div>
-    <p class="hint">Arrow keys or WASD to drive, Space or Enter to fire. Grab the flag and hold it: 1 point a second, 2 per hit. First to <span id="win-score">60</span> wins. X toggles scanlines.</p>
+    <p class="hint">Arrow keys or WASD to drive, Space or Enter to fire. Grab the flag and hold it: 1 point a second, 2 per hit. First to <span id="win-score">60</span> wins.</p>
 
     <div id="game-over" class="card">
       <h3 id="game-over-title">GAME OVER</h3>
