@@ -21,7 +21,13 @@
   const SPIN_TICKS = Math.round(1.2 * TICK_RATE); // a hit tank spins out before respawning
   const SPIN_SPEED = 15;
   const INVULNERABLE_TICKS = 2 * TICK_RATE;
-  const WIN_SCORE = 10;
+  // Capture the flag: hold the flag to score; shooting the holder knocks it to a new spot.
+  const WIN_SCORE = 60;
+  const HOLD_TICKS_PER_POINT = TICK_RATE; // 1 point per second holding the flag
+  const HIT_POINTS = 2;
+  const FLAG_PICKUP_RADIUS = 24;
+  const FLAG_CLEARANCE = 20; // flag spots keep this far from walls
+  const FLAG_MIN_TANK_DISTANCE = 220; // respawned flags appear away from tanks
   const GAME_SECONDS = 180;
   const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I/O to avoid confusion with 1/0
   // Atari Combat palette (from RetroTanks).
@@ -76,6 +82,18 @@
 
   const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 
+  // Every open spot the flag may appear on (cell centres clear of walls).
+  const FLAG_SPOTS = [];
+  for (let cy = 0; cy < ARENA.rows; cy++) {
+    for (let cx = 0; cx < ARENA.cols; cx++) {
+      const x = (cx + 0.5) * ARENA.cell;
+      const y = (cy + 0.5) * ARENA.cell;
+      if (!circleHitsWall(x, y, FLAG_CLEARANCE)) FLAG_SPOTS.push({ x, y });
+    }
+  }
+  // Each game starts with the flag in the channel through the centre bunker.
+  const FLAG_START = { x: ARENA.width / 2, y: ARENA.height / 2 };
+
   // ---------- Players ----------
 
   const EMPTY_INPUT = { forward: false, back: false, left: false, right: false, fire: false };
@@ -91,6 +109,7 @@
       angle: p.angle,
       moving: p.moving,
       score: p.score,
+      hasFlag: !!p.hasFlag,
       status: p.status,
       invulnerable: p.invulnerableTicks > 0,
     };
@@ -119,6 +138,7 @@
       this.loop = null;
       this.tick = 0;
       this.ticksLeft = 0;
+      this.flag = { ...FLAG_START, holder: null };
     }
 
     get size() {
@@ -152,7 +172,9 @@
     }
 
     leave(id) {
+      const leaver = this.players.get(id);
       if (!this.players.delete(id)) return;
+      if (leaver.hasFlag) this.respawnFlag();
       this.bullets = this.bullets.filter((b) => b.owner !== id);
       if (this.players.size === 0) {
         this.stopLoop();
@@ -169,6 +191,7 @@
       this.ticksLeft = GAME_SECONDS * TICK_RATE;
       this.bullets = [];
       this.started = true;
+      this.flag = { ...FLAG_START, holder: null };
       this.players.forEach((p) => {
         p.score = 0;
         this.resetPlayer(p);
@@ -208,6 +231,8 @@
       p.firePrev = false;
       p.moving = false;
       p.input = { ...EMPTY_INPUT };
+      p.hasFlag = false;
+      p.holdTicks = 0;
     }
 
     // Respawn at the player's own corner if it's clear, otherwise the spawn furthest from other tanks.
@@ -245,8 +270,44 @@
         winScore: WIN_SCORE,
         ticksLeft: this.ticksLeft,
         bullets: this.bullets.map(serializeBullet),
+        flag: this.serializeFlag(),
         ...this.lobbyPayload(),
       };
+    }
+
+    serializeFlag() {
+      return { x: this.flag.x, y: this.flag.y, holder: this.flag.holder };
+    }
+
+    // Puts the flag on a random open spot away from every tank (falling back to the furthest spot).
+    respawnFlag(events) {
+      const tanks = [...this.players.values()].filter((p) => p.status === 'alive');
+      const clearance = (s) => Math.min(Infinity, ...tanks.map((t) => dist2(t, s)));
+      const far = FLAG_SPOTS.filter((s) => clearance(s) >= FLAG_MIN_TANK_DISTANCE ** 2);
+      const spot = far.length
+        ? far[randInt(far.length)]
+        : FLAG_SPOTS.reduce((best, s) => (clearance(s) > clearance(best) ? s : best), FLAG_SPOTS[0]);
+      this.players.forEach((p) => { p.hasFlag = false; });
+      this.flag = { x: spot.x, y: spot.y, holder: null };
+      if (events) events.push({ type: 'flagRespawn', x: spot.x, y: spot.y });
+    }
+
+    stepFlag(events) {
+      const holder = this.flag.holder && this.players.get(this.flag.holder);
+      if (holder) {
+        this.flag.x = holder.x;
+        this.flag.y = holder.y;
+        if (++holder.holdTicks % HOLD_TICKS_PER_POINT === 0) holder.score++;
+        return;
+      }
+      for (const p of this.players.values()) {
+        if (p.status !== 'alive' || dist2(p, this.flag) > FLAG_PICKUP_RADIUS ** 2) continue;
+        p.hasFlag = true;
+        p.holdTicks = 0;
+        this.flag = { x: p.x, y: p.y, holder: p.id };
+        events.push({ type: 'flagTaken', by: p.id });
+        return;
+      }
     }
 
     broadcastLobby() {
@@ -264,12 +325,14 @@
       const events = [];
       this.players.forEach((p) => this.stepPlayer(p, events));
       this.stepBullets(events);
+      this.stepFlag(events);
 
       this.broadcast('state', {
         tick: this.tick,
         ticksLeft: this.ticksLeft,
         players: [...this.players.values()].map(serializePlayer),
         bullets: this.bullets.map(serializeBullet),
+        flag: this.serializeFlag(),
         events,
       });
 
@@ -366,11 +429,12 @@
             if (t.id === b.owner || t.status !== 'alive' || t.invulnerableTicks > 0) continue;
             if (dist2(t, b) > TANK_RADIUS * TANK_RADIUS) continue;
             const shooter = this.players.get(b.owner);
-            if (shooter) shooter.score++;
+            if (shooter) shooter.score += HIT_POINTS;
             t.status = 'hit';
             t.spinTicks = SPIN_TICKS;
             t.moving = false;
-            events.push({ type: 'hit', by: b.owner, id: t.id, x: t.x, y: t.y });
+            events.push({ type: 'hit', by: b.owner, id: t.id, x: t.x, y: t.y, hadFlag: !!t.hasFlag });
+            if (t.hasFlag) this.respawnFlag(events);
             return false;
           }
         }
@@ -387,6 +451,10 @@
     MAX_PLAYERS,
     TANK_RADIUS,
     WIN_SCORE,
+    HIT_POINTS,
+    HOLD_TICKS_PER_POINT,
+    FLAG_START,
+    FLAG_SPOTS,
     GAME_SECONDS,
     SPIN_TICKS,
     INVULNERABLE_TICKS,

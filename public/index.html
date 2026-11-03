@@ -34,6 +34,8 @@
       text-shadow: 4px 4px 0 #cf5353, 8px 8px 0 #8286ff;
     }
     @media (max-width: 520px) { #logo { font-size: 24px; } }
+    #logo-img { display: block; width: 100%; max-width: 440px; height: auto; margin: 0 auto; }
+    #logo-img[hidden], #logo[hidden] { display: none; }
     .subtitle { color: #fff; margin-top: 4px; }
     /* Hide the logo while playing so the arena sits at the top of the screen. */
     body.in-game header { display: none; }
@@ -107,6 +109,7 @@
     .score-tag.empty { visibility: hidden; }
     .score-tag .tag-name { font-size: 8px; }
     .score-tag .tag-score { font-size: 10px; color: #fff; }
+    .score-tag .tag-flag { font-size: 14px; color: #ffd740; font-family: sans-serif; visibility: hidden; }
     canvas { background: #000; border-radius: 6px; image-rendering: pixelated; }
     /* The arena is wider than most game boards; shrink it to fit smaller screens. */
     #game-canvas { max-width: 100%; height: auto; }
@@ -127,7 +130,12 @@
 </head>
 <body>
   <header>
-    <h1 id="logo">TANKMATES</h1>
+    <!-- Drop your logo at assets/image/tankmates-logo.png; the text title shows until it exists. -->
+    <h1>
+      <img id="logo-img" src="assets/image/tankmates-logo.png" alt="Tankmates" hidden
+        onload="this.hidden = false; document.getElementById('logo').hidden = true;">
+      <span id="logo">TANKMATES</span>
+    </h1>
     <p class="subtitle">Online multiplayer for up to 4 mates</p>
   </header>
 
@@ -172,7 +180,7 @@
       <div class="score-tag empty" data-slot="3"></div>
       <div class="score-tag right empty" data-slot="4"></div>
     </div>
-    <p class="hint">Arrow keys or WASD to drive, Space or Enter to fire. First to <span id="win-score">10</span> hits wins. X toggles scanlines.</p>
+    <p class="hint">Arrow keys or WASD to drive, Space or Enter to fire. Grab the flag and hold it: 1 point a second, 2 per hit. First to <span id="win-score">60</span> wins. X toggles scanlines.</p>
 
     <div id="game-over" class="card">
       <h3 id="game-over-title">GAME OVER</h3>

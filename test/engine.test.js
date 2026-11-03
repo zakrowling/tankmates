@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   GameRoom, generateRoomCode, ARENA, TANK_RADIUS, WIN_SCORE, GAME_SECONDS, TICK_RATE,
   SPIN_TICKS, INVULNERABLE_TICKS, BULLET_LIFE_TICKS, circleHitsWall,
+  HIT_POINTS, HOLD_TICKS_PER_POINT, FLAG_START, FLAG_SPOTS,
 } = require('../public/engine.js');
 
 // Builds a room with a manual clock and records every message it sends.
@@ -25,15 +26,21 @@ function startedRoom(playerCount = 2) {
   const ctx = makeRoom();
   for (let i = 1; i <= playerCount; i++) ctx.room.join(`p${i}`);
   ctx.room.start('p1');
+  parkFlag(ctx.room);
   return ctx;
+}
+
+// Moves the flag out of reach so it doesn't affect tests that aren't about the flag.
+function parkFlag(room) {
+  room.flag = { x: -1000, y: -1000, holder: null };
 }
 
 const press = (room, id, controls) => room.input(id, { forward: false, back: false, left: false, right: false, fire: false, ...controls });
 
 // Puts two tanks on the same open row, the shooter facing the target.
 function lineUp(room, shooter, target, gap = 120) {
-  Object.assign(shooter, { x: 200, y: 36, angle: 0, invulnerableTicks: 0 });
-  Object.assign(target, { x: 200 + gap, y: 36, angle: 180, invulnerableTicks: 0 });
+  Object.assign(shooter, { x: 200, y: 60, angle: 0, invulnerableTicks: 0 });
+  Object.assign(target, { x: 200 + gap, y: 60, angle: 180, invulnerableTicks: 0 });
 }
 
 test('room codes are 4 letters without I or O', () => {
@@ -42,8 +49,8 @@ test('room codes are 4 letters without I or O', () => {
 });
 
 test('arena is mirrored with 4 clear corner spawns aimed at the centre', () => {
-  assert.equal(ARENA.width, 960);
-  assert.equal(ARENA.height, 576);
+  assert.equal(ARENA.width, 1200);
+  assert.equal(ARENA.height, 720);
   ARENA.layout.forEach((row) => assert.equal(row, [...row].reverse().join('')));
   assert.deepEqual(ARENA.layout, [...ARENA.layout].reverse());
   assert.equal(ARENA.spawns.length, 4);
@@ -68,7 +75,7 @@ test('every open area of the arena is reachable by a tank', () => {
     }
   }
   for (const s of ARENA.spawns) assert.ok(seen.has(`${Math.floor(s.x / c)},${Math.floor(s.y / c)}`));
-  assert.ok(seen.size > 500, `only ${seen.size} cells reachable`);
+  assert.ok(seen.size > 800, `only ${seen.size} cells reachable`);
 });
 
 test('players get numbers 1-4, unique names and Combat colours; 5th rejected', () => {
@@ -144,7 +151,7 @@ test('tanks cannot drive through each other', () => {
 test('firing launches one shell at a time; holding fire does not auto-fire', () => {
   const { room, run, events } = startedRoom(1);
   const p = room.players.get('p1');
-  Object.assign(p, { x: 200, y: 36, angle: 0 });
+  Object.assign(p, { x: 200, y: 60, angle: 0 });
   press(room, 'p1', { fire: true });
   run(1);
   assert.equal(room.bullets.length, 1);
@@ -168,13 +175,13 @@ test('shells stop at walls and expire', () => {
   assert.ok(BULLET_LIFE_TICKS > 0);
 });
 
-test('a hit scores a point, spins the target out, then respawns it protected', () => {
+test('a hit scores points, spins the target out, then respawns it protected', () => {
   const { room, run, events } = startedRoom(2);
   const [a, b] = ['p1', 'p2'].map((id) => room.players.get(id));
   lineUp(room, a, b);
   press(room, 'p1', { fire: true });
   run(15);
-  assert.equal(a.score, 1);
+  assert.equal(a.score, HIT_POINTS);
   assert.equal(b.status, 'hit');
   assert.deepEqual(events('hit').map((e) => [e.by, e.id]), [['p1', 'p2']]);
 
@@ -197,7 +204,7 @@ test('protected and spinning tanks cannot be hit again', () => {
 test('you cannot shoot yourself', () => {
   const { room, run } = startedRoom(1);
   const p = room.players.get('p1');
-  Object.assign(p, { x: 200, y: 36, angle: 0 });
+  Object.assign(p, { x: 200, y: 60, angle: 0 });
   press(room, 'p1', { fire: true });
   run(BULLET_LIFE_TICKS);
   assert.equal(p.status, 'alive');
@@ -205,7 +212,7 @@ test('you cannot shoot yourself', () => {
 
 test('first to the win score ends the game', () => {
   const { room, run, last, isRunning } = startedRoom(2);
-  room.players.get('p2').score = WIN_SCORE - 1;
+  room.players.get('p2').score = WIN_SCORE - HIT_POINTS;
   const [a, b] = ['p2', 'p1'].map((id) => room.players.get(id));
   lineUp(room, a, b);
   press(room, 'p2', { fire: true });
@@ -252,4 +259,71 @@ test('a preferred name is kept across host handovers when free', () => {
   assert.equal(room.players.get('a').name, 'BOOM');
   room.join('b', 'BOOM');
   assert.notEqual(room.players.get('b').name, 'BOOM');
+});
+
+test('each game starts with the flag in the centre channel, clear of walls', () => {
+  const { last } = (() => { const c = makeRoom(); c.room.join('p1'); c.room.start('p1'); return c; })();
+  const flag = last('gameStarted').data.flag;
+  assert.deepEqual([flag.x, flag.y, flag.holder], [FLAG_START.x, FLAG_START.y, null]);
+  assert.equal(circleHitsWall(FLAG_START.x, FLAG_START.y, TANK_RADIUS), false);
+  assert.ok(FLAG_SPOTS.length > 500);
+});
+
+test('driving over the flag picks it up and holding it scores 1 point per second', () => {
+  const { room, run, events } = startedRoom(2);
+  const p = room.players.get('p1');
+  room.flag = { x: p.x + 10, y: p.y, holder: null };
+  run(1);
+  assert.equal(room.flag.holder, 'p1');
+  assert.equal(p.hasFlag, true);
+  assert.deepEqual(events('flagTaken').map((e) => e.by), ['p1']);
+
+  run(HOLD_TICKS_PER_POINT * 3);
+  assert.equal(p.score, 3);
+  press(room, 'p1', { forward: true });
+  run(10);
+  assert.deepEqual([room.flag.x, room.flag.y], [p.x, p.y], 'flag travels with the holder');
+});
+
+test('only one tank can hold the flag', () => {
+  const { room, run } = startedRoom(2);
+  const [a, b] = ['p1', 'p2'].map((id) => room.players.get(id));
+  room.flag = { x: a.x, y: a.y, holder: null };
+  run(1);
+  Object.assign(b, { x: a.x + 33, y: a.y });
+  run(5);
+  assert.equal(room.flag.holder, 'p1');
+  assert.equal(b.hasFlag, false);
+});
+
+test('shooting the flag holder scores the hit and respawns the flag away from tanks', () => {
+  const { room, run, events } = startedRoom(2);
+  const [a, b] = ['p1', 'p2'].map((id) => room.players.get(id));
+  lineUp(room, a, b);
+  room.flag = { x: b.x, y: b.y, holder: null };
+  run(1);
+  assert.equal(room.flag.holder, 'p2');
+
+  press(room, 'p1', { fire: true });
+  run(15);
+  assert.equal(b.status, 'hit');
+  assert.equal(b.hasFlag, false);
+  assert.equal(room.flag.holder, null);
+  assert.equal(events('hit')[0].hadFlag, true);
+  assert.equal(events('flagRespawn').length, 1);
+  for (const t of room.players.values()) {
+    if (t.status === 'alive') assert.ok(Math.hypot(t.x - room.flag.x, t.y - room.flag.y) >= 200);
+  }
+  assert.equal(circleHitsWall(room.flag.x, room.flag.y, 16), false);
+});
+
+test('a holder leaving the room respawns the flag', () => {
+  const { room, run } = startedRoom(2);
+  const b = room.players.get('p2');
+  room.flag = { x: b.x, y: b.y, holder: null };
+  run(1);
+  assert.equal(room.flag.holder, 'p2');
+  room.leave('p2');
+  assert.equal(room.flag.holder, null);
+  assert.ok(room.flag.x > 0);
 });
