@@ -66,20 +66,38 @@
   // Browsers only allow audio after a user gesture.
   ['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, getAudioCtx, { once: true }));
 
-  // Background drums: loop quietly while the game screen is open.
+  // Background drums: loop quietly during a game. The track position follows the shared game
+  // clock (seconds since the game started), so every player hears the same beat, even if their
+  // browser only lets it start after a click or key press.
   const music = (() => {
     const el = new Audio('assets/hitslab-war-battle-military-drums.mp3');
     el.loop = true;
     el.volume = 0.2;
     el.preload = 'auto';
     let wanted = false;
+    let clock = () => 0; // seconds into the game
+    const expected = () => (el.duration > 0 ? clock() % el.duration : clock());
+    const seek = () => {
+      const t = expected();
+      if (Math.abs(el.currentTime - t) > 0.3) el.currentTime = t;
+    };
+    const play = () => {
+      if (!wanted) return;
+      seek();
+      if (el.paused) el.play().catch(() => {});
+    };
+    el.addEventListener('loadedmetadata', () => { if (wanted) seek(); });
     // If autoplay is blocked (e.g. a guest whose game was started by someone else), start on the next gesture.
-    const retry = () => { if (wanted && el.paused) el.play().catch(() => {}); };
-    ['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, retry));
+    ['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, () => { if (el.paused) play(); }));
     return {
-      start() {
+      start(gameClock) {
+        clock = gameClock;
         wanted = true;
-        if (el.paused) el.play().catch(() => {});
+        play();
+      },
+      // Called as game snapshots arrive: nudges the track back in line if it has drifted.
+      sync() {
+        if (wanted && !el.paused) seek();
       },
       stop() {
         wanted = false;
@@ -1238,7 +1256,8 @@
     document.body.classList.add('in-game');
     updateScoreboard(payload.players);
     playSound('start');
-    music.start();
+    const { GAME_SECONDS } = window.TankmatesEngine;
+    music.start(() => Math.max(0, GAME_SECONDS - (state.ticksLeft * state.tickMs) / 1000));
 
     if (!state.rafId) state.rafId = requestAnimationFrame(render);
   });
@@ -1250,6 +1269,7 @@
     state.prevBullets = state.currBullets;
     state.currBullets = new Map(snapshot.bullets.map((b) => [b.id, b]));
     state.ticksLeft = snapshot.ticksLeft;
+    music.sync();
     state.flag = snapshot.flag;
     state.mines = snapshot.mines || [];
     const now = performance.now();
