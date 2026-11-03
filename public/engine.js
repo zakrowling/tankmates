@@ -61,6 +61,11 @@
 
   const isOuterCell = (cx, cy) => cx === 0 || cy === 0 || cx === ARENA.cols - 1 || cy === ARENA.rows - 1;
 
+  // The arena wraps around through the tunnels in the outer wall.
+  const wrap = (v, size) => ((v % size) + size) % size;
+  const wrapX = (x) => wrap(x, ARENA.width);
+  const wrapY = (y) => wrap(y, ARENA.height);
+
   function wallCellAt(px, py) {
     return { cx: Math.floor(px / ARENA.cell), cy: Math.floor(py / ARENA.cell) };
   }
@@ -96,13 +101,15 @@
   }
 
   function isWallAt(px, py, walls = ARENA.walls) {
+    px = wrapX(px);
+    py = wrapY(py);
     const { cx, cy } = wallCellAt(px, py);
-    if (cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols) return true;
     if (walls[cy][cx] !== 1) return false;
     return wallRects(cx, cy).some(([x0, y0, x1, y1]) => px >= x0 && px < x1 && py >= y0 && py < y1);
   }
 
-  // Does a circle overlap any wall cell?
+  // Does a circle overlap any wall cell? Cells past the edge wrap around to the other side
+  // (that's what makes the tunnels work), shifted so they line up with the circle.
   function circleHitsWall(x, y, r, walls = ARENA.walls) {
     const c = ARENA.cell;
     const x0 = Math.floor((x - r) / c);
@@ -111,15 +118,15 @@
     const y1 = Math.floor((y + r) / c);
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
-        if (cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols || walls[cy][cx] === 1) {
-          const rects = cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols
-            ? [[cx * c, cy * c, (cx + 1) * c, (cy + 1) * c]]
-            : wallRects(cx, cy);
-          for (const [x0, y0, x1, y1] of rects) {
-            const nx = Math.max(x0, Math.min(x, x1));
-            const ny = Math.max(y0, Math.min(y, y1));
-            if ((x - nx) ** 2 + (y - ny) ** 2 < r * r) return true;
-          }
+        const wcx = wrap(cx, ARENA.cols);
+        const wcy = wrap(cy, ARENA.rows);
+        if (walls[wcy][wcx] !== 1) continue;
+        const ox = (cx - wcx) * c;
+        const oy = (cy - wcy) * c;
+        for (const [rx0, ry0, rx1, ry1] of wallRects(wcx, wcy)) {
+          const nx = Math.max(rx0 + ox, Math.min(x, rx1 + ox));
+          const ny = Math.max(ry0 + oy, Math.min(y, ry1 + oy));
+          if ((x - nx) ** 2 + (y - ny) ** 2 < r * r) return true;
         }
       }
     }
@@ -133,6 +140,7 @@
     const spots = [];
     for (let cy = 0; cy < ARENA.rows; cy++) {
       for (let cx = 0; cx < ARENA.cols; cx++) {
+        if (isOuterCell(cx, cy)) continue; // not in the tunnel mouths
         const x = (cx + 0.5) * ARENA.cell;
         const y = (cy + 0.5) * ARENA.cell;
         if (!circleHitsWall(x, y, FLAG_CLEARANCE, walls)) spots.push({ x, y });
@@ -459,6 +467,9 @@
         // Move each axis separately so tanks slide along walls instead of sticking.
         if (this.canOccupy(p, p.x + dx, p.y)) p.x += dx;
         if (this.canOccupy(p, p.x, p.y + dy)) p.y += dy;
+        // Through a tunnel: come out on the other side.
+        p.x = wrapX(p.x);
+        p.y = wrapY(p.y);
       }
 
       // Fire on press (not while held), one shell in flight at a time.
@@ -505,7 +516,7 @@
 
     // A shell knocks bricks out of the block it hits; at 0 hit points the block crumbles away.
     damageWall(x, y, events) {
-      const { cx, cy } = wallCellAt(x, y);
+      const { cx, cy } = wallCellAt(wrapX(x), wrapY(y));
       if (!this.wallHp[cy] || !this.wallHp[cy][cx]) return;
       const hp = --this.wallHp[cy][cx];
       if (hp <= 0) this.walls[cy][cx] = 0;
@@ -534,6 +545,8 @@
         x = p.x;
         y = p.y;
       }
+      x = wrapX(x);
+      y = wrapY(y);
       const mine = { id: this.nextBulletId++, owner: p.id, color: p.color, x, y, armTick: this.tick + MINE_ARM_TICKS };
       this.mines.push(mine);
       events.push({ type: 'mineDropped', by: p.id, x, y });
@@ -558,8 +571,8 @@
       this.bullets = this.bullets.filter((b) => {
         if (--b.life <= 0) return false;
         for (let i = 0; i < steps; i++) {
-          b.x += b.vx / steps;
-          b.y += b.vy / steps;
+          b.x = wrapX(b.x + b.vx / steps);
+          b.y = wrapY(b.y + b.vy / steps);
           if (isWallAt(b.x, b.y, this.walls)) {
             events.push({ type: 'impact', x: b.x, y: b.y });
             this.damageWall(b.x, b.y, events);
@@ -598,6 +611,8 @@
     circleHitsWall,
     wallRect,
     wallRects,
+    wrapX,
+    wrapY,
     TANK_SPEED,
     BOOST,
   };

@@ -5,8 +5,10 @@
 })(typeof self !== 'undefined' ? self : this, () => {
   // One quarter of the arena (top-left). '#' is a wall, '.' is open ground.
   // buildArena() mirrors it left-right and top-bottom so every corner spawn is identical.
+  // The gaps in the outer wall (end of the top row, bottom of the left column) mirror into
+  // 4-cell tunnels in the middle of each side: drive out of one and you come in on the other side.
   const QUARTER = [
-    '#########################',
+    '#######################..',
     '#........................',
     '#........................',
     '#........................',
@@ -19,8 +21,8 @@
     '#............#...........',
     '#....##......#...........',
     '#....##......#...........',
-    '#...................####.',
-    '#...................####.',
+    '....................####.',
+    '....................####.',
   ];
 
   const CELL = 24; // pixels per layout cell

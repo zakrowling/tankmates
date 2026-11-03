@@ -1115,12 +1115,57 @@
     for (let y = 0; y < arena.rows; y++) {
       for (let x = 0; x < arena.cols; x++) paintWallCell(g, arena, x, y);
     }
-    // Inner shadow along the concrete perimeter so it reads as a raised wall.
-    const edge = arena.cell / 2;
+    // Inner shadow along the concrete perimeter so it reads as a raised wall (not across the tunnels).
+    const c = arena.cell;
+    const edge = c / 2;
     g.fillStyle = 'rgba(0, 0, 0, 0.35)';
-    g.fillRect(edge, edge, arena.width - 2 * edge, 3);
-    g.fillRect(edge, edge, 3, arena.height - 2 * edge);
+    const span = (i, size) => [Math.max(edge, i * c), Math.min(size - edge, (i + 1) * c)];
+    for (let x = 0; x < arena.cols; x++) {
+      const [a, b] = span(x, arena.width);
+      if (arena.walls[0][x] === 1) g.fillRect(a, edge, b - a, 3);
+    }
+    for (let y = 0; y < arena.rows; y++) {
+      const [a, b] = span(y, arena.height);
+      if (arena.walls[y][0] === 1) g.fillRect(edge, a, 3, b - a);
+    }
+    paintTunnelMouths(g, arena);
     return layer;
+  }
+
+  // Tunnels through the outer wall: a dark mouth fading into the ground, so they read as passages.
+  function paintTunnelMouths(g, arena) {
+    const c = arena.cell;
+    const depth = c * 1.25;
+    const runs = (cells) => {
+      const out = [];
+      cells.forEach((open, i) => {
+        if (!open) return;
+        if (out.length && out[out.length - 1][1] === i - 1) out[out.length - 1][1] = i;
+        else out.push([i, i]);
+      });
+      return out;
+    };
+    const top = runs(arena.walls[0].map((v) => v === 0));
+    const left = runs(arena.walls.map((row) => row[0] === 0));
+    const mouth = (x0, y0, x1, y1, gx0, gy0, gx1, gy1) => {
+      const grad = g.createLinearGradient(gx0, gy0, gx1, gy1);
+      grad.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      g.fillStyle = grad;
+      g.fillRect(x0, y0, x1 - x0, y1 - y0);
+    };
+    top.forEach(([a, b]) => {
+      const x0 = a * c;
+      const x1 = (b + 1) * c;
+      mouth(x0, 0, x1, depth, 0, 0, 0, depth);
+      mouth(x0, arena.height - depth, x1, arena.height, 0, arena.height, 0, arena.height - depth);
+    });
+    left.forEach(([a, b]) => {
+      const y0 = a * c;
+      const y1 = (b + 1) * c;
+      mouth(0, y0, depth, y1, 0, 0, depth, 0);
+      mouth(arena.width - depth, y0, arena.width, y1, arena.width, 0, arena.width - depth, 0);
+    });
   }
 
   // Soft drop shadow cast by the walls, rebuilt whenever a wall changes.
@@ -1360,6 +1405,19 @@
     return a + (b - a) * t;
   }
 
+  // Where to draw something of radius r so it shows on both sides of the map while in a tunnel.
+  function wrapCopies(x, y, r) {
+    const w = state.arena.width;
+    const h = state.arena.height;
+    const xs = [x];
+    const ys = [y];
+    if (x < r) xs.push(x + w);
+    if (x > w - r) xs.push(x - w);
+    if (y < r) ys.push(y + h);
+    if (y > h - r) ys.push(y - h);
+    return xs.flatMap((cx) => ys.map((cy) => [cx, cy]));
+  }
+
   function lerpAngle(a, b, t) {
     let d = ((b - a + 540) % 360) - 180;
     return a + d * t;
@@ -1490,7 +1548,7 @@
     });
   }
 
-  // Landmines: a low disc in the owner's colour ring; armed mines blink a red light.
+  // Landmines: a low, dull disc that blends into the ground; armed mines blink a red light.
   function drawMine(m, now) {
     ctx.save();
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
@@ -1504,9 +1562,6 @@
     ctx.beginPath();
     ctx.arc(m.x, m.y, 7, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = m.color;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
     // Pressure plate and spokes.
     ctx.fillStyle = '#4a4a40';
     ctx.beginPath();
@@ -1588,7 +1643,8 @@
     drawTimer();
 
     state.currBullets.forEach((b) => {
-      const prev = state.prevBullets.get(b.id) || b;
+      let prev = state.prevBullets.get(b.id) || b;
+      if (Math.abs(prev.x - b.x) > 40 || Math.abs(prev.y - b.y) > 40) prev = b; // came through a tunnel
       const x = lerp(prev.x, b.x, alpha);
       const y = lerp(prev.y, b.y, alpha);
       ctx.save();
@@ -1630,8 +1686,11 @@
         ctx.arc(x, y, 30, 0, Math.PI * 2);
         ctx.fill();
       }
-      drawTank(ctx, p, x, y, angle);
-      if (p.hasFlag) drawFlag(x - 4, y - 6, now, true);
+      // Half-way through a tunnel: also draw the part coming out of the other side.
+      wrapCopies(x, y, 24).forEach(([wx, wy]) => {
+        drawTank(ctx, p, wx, wy, angle);
+        if (p.hasFlag) drawFlag(wx - 4, wy - 6, now, true);
+      });
       ctx.globalAlpha = 1;
       positions.push([p, x, y]);
     });

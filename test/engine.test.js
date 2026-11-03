@@ -71,8 +71,11 @@ test('every open area of the arena is reachable by a tank', () => {
   while (queue.length) {
     const [x, y] = queue.pop();
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const key = `${x + dx},${y + dy}`;
-      if (!seen.has(key) && open(x + dx, y + dy)) { seen.add(key); queue.push([x + dx, y + dy]); }
+      // Wrap through the tunnels so the fill stays on the map.
+      const nx = (x + dx + ARENA.cols) % ARENA.cols;
+      const ny = (y + dy + ARENA.rows) % ARENA.rows;
+      const key = `${nx},${ny}`;
+      if (!seen.has(key) && open(nx, ny)) { seen.add(key); queue.push([nx, ny]); }
     }
   }
   for (const s of ARENA.spawns) assert.ok(seen.has(`${Math.floor(s.x / c)},${Math.floor(s.y / c)}`));
@@ -501,14 +504,20 @@ test('outer wall corners are solid L shapes with no gaps', () => {
   const c = ARENA.cell;
   const corners = [[0, 0], [ARENA.cols - 1, 0], [0, ARENA.rows - 1], [ARENA.cols - 1, ARENA.rows - 1]];
   for (const [cx, cy] of corners) assert.equal(wallRects(cx, cy).length, 2);
-  // Every point along the thin perimeter strips is solid, including right next to the corners.
+  // Every point along the thin perimeter strips is solid, including right next to the corners,
+  // except the tunnel openings in the middle of each side.
+  const midX = ARENA.width / 2;
+  const midY = ARENA.height / 2;
+  const tunnel = 2 * c; // half-width of each tunnel
   for (let x = 1; x < ARENA.width; x += 3) {
-    assert.ok(circleHitsWall(x, c / 4, 1), `top strip at ${x}`);
-    assert.ok(circleHitsWall(x, ARENA.height - c / 4, 1), `bottom strip at ${x}`);
+    const open = Math.abs(x - midX) < tunnel;
+    assert.equal(circleHitsWall(x, c / 4, 1), !open, `top strip at ${x}`);
+    assert.equal(circleHitsWall(x, ARENA.height - c / 4, 1), !open, `bottom strip at ${x}`);
   }
   for (let y = 1; y < ARENA.height; y += 3) {
-    assert.ok(circleHitsWall(c / 4, y, 1), `left strip at ${y}`);
-    assert.ok(circleHitsWall(ARENA.width - c / 4, y, 1), `right strip at ${y}`);
+    const open = Math.abs(y - midY) < tunnel;
+    assert.equal(circleHitsWall(c / 4, y, 1), !open, `left strip at ${y}`);
+    assert.equal(circleHitsWall(ARENA.width - c / 4, y, 1), !open, `right strip at ${y}`);
   }
   // The inner quarter of a corner cell is open floor.
   assert.equal(circleHitsWall(c * 0.75, c * 0.75, 1), false);
@@ -550,7 +559,9 @@ function drivable(walls, a, b) {
   while (queue.length) {
     const [x, y] = queue.shift();
     if (Math.abs(x - b.x) < step && Math.abs(y - b.y) < step) return true;
-    for (const [nx, ny] of [[x + step, y], [x - step, y], [x, y + step], [x, y - step]]) {
+    for (let [nx, ny] of [[x + step, y], [x - step, y], [x, y + step], [x, y - step]]) {
+      nx = (nx + ARENA.width) % ARENA.width; // through the tunnels
+      ny = (ny + ARENA.height) % ARENA.height;
       if (seen.has(key(nx, ny)) || circleHitsWall(nx, ny, TANK_RADIUS, walls)) continue;
       seen.add(key(nx, ny));
       queue.push([nx, ny]);
@@ -616,4 +627,35 @@ test('each new game uses a freshly shuffled map, sent to every player', () => {
   room.started = false;
   room.start('p1');
   assert.notEqual(room.walls.map((r) => r.join('')).join('/'), first, 'the next game is different again');
+});
+
+test('tanks drive through the side and top tunnels and come out the other side', () => {
+  const { room, run } = startedRoom(1);
+  const p = room.players.get('p1');
+  // Left tunnel, heading left.
+  Object.assign(p, { x: 30, y: ARENA.height / 2, angle: 180, invulnerableTicks: 0 });
+  press(room, 'p1', { forward: true });
+  run(20);
+  assert.ok(p.x > ARENA.width - 60, `came out on the right (x=${p.x})`);
+  assert.equal(p.y, ARENA.height / 2);
+  // Top tunnel, heading up.
+  Object.assign(p, { x: ARENA.width / 2, y: 30, angle: 270 });
+  run(20);
+  assert.ok(p.y > ARENA.height - 60, `came out at the bottom (y=${p.y})`);
+  assert.ok(p.x >= 0 && p.x < ARENA.width && p.y >= 0 && p.y < ARENA.height);
+  // Beside the tunnel the wall still blocks.
+  Object.assign(p, { x: 40, y: 60, angle: 180 });
+  run(20);
+  assert.ok(p.x >= ARENA.cell / 2 + 16 - 0.01, 'stopped by the wall away from the tunnel');
+});
+
+test('shells fly through the tunnels and can hit tanks on the other side', () => {
+  const { room, run } = startedRoom(2);
+  const [a, b] = [room.players.get('p1'), room.players.get('p2')];
+  Object.assign(a, { x: 60, y: ARENA.height / 2, angle: 180, invulnerableTicks: 0, cooldown: 0 });
+  Object.assign(b, { x: ARENA.width - 60, y: ARENA.height / 2, angle: 180, invulnerableTicks: 0 });
+  press(room, 'p1', { fire: true });
+  run(12);
+  assert.equal(b.status, 'hit');
+  assert.equal(a.score, HIT_POINTS);
 });
