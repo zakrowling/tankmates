@@ -1395,21 +1395,38 @@
     return a + d * t;
   }
 
-  function drawNameBubble(p, cx, top) {
+  function drawNameBubble(p, cx, cy, top) {
     ctx.font = '10px "Geist Pixel", monospace';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
     const w = ctx.measureText(p.name).width + 14;
     const h = 16;
-    const x = Math.max(1, Math.min(canvas.width - w - 1, cx - w / 2));
-    const y = Math.max(1, top - h - 2);
+    const W = canvas.width;
+    const H = canvas.height;
+    const tunnel = state.arena.cell * 2;
+    // Bubbles stay on the board, except in line with a tunnel: there the bubble rides through with
+    // its tank, showing on both sides while it passes.
+    const inSideTunnel = Math.abs(cy - H / 2) < tunnel;
+    const inEndTunnel = Math.abs(cx - W / 2) < tunnel;
+    let x = cx - w / 2;
+    let y = top - h - 2;
+    if (!inSideTunnel) x = Math.max(1, Math.min(W - w - 1, x));
+    if (!inEndTunnel) y = Math.max(1, y);
+    const xs = [x];
+    const ys = [y];
+    if (inSideTunnel && x < 0) xs.push(x + W);
+    if (inSideTunnel && x + w > W) xs.push(x - W);
+    if (inEndTunnel && y < 0) ys.push(y + H);
+    if (inEndTunnel && y + h > H) ys.push(y - H);
     // Your own bubble is yellow with black text so you can spot yourself; everyone else's is black.
     const isYou = p.id === state.playerId;
-    ctx.fillStyle = isYou ? '#ffe600' : 'rgba(0, 0, 0, 0.85)';
-    roundRect(ctx, x, y, w, h, h / 2);
-    ctx.fill();
-    ctx.fillStyle = isYou ? '#000' : '#fff';
-    ctx.fillText(p.name, x + w / 2, y + h / 2 + 1);
+    xs.forEach((bx) => ys.forEach((by) => {
+      ctx.fillStyle = isYou ? '#ffe600' : 'rgba(0, 0, 0, 0.85)';
+      roundRect(ctx, bx, by, w, h, h / 2);
+      ctx.fill();
+      ctx.fillStyle = isYou ? '#000' : '#fff';
+      ctx.fillText(p.name, bx + w / 2, by + h / 2 + 1);
+    }));
   }
 
   const BLAST_MS = { muzzle: 120, impact: 350, explosion: 1100, collapse: 900 };
@@ -1684,7 +1701,7 @@
     drawSmoke(now);
     drawBlasts(now);
     // Bubbles go on top so a tank never covers another player's name.
-    positions.forEach(([p, x, y]) => drawNameBubble(p, x, y - (p.hasFlag ? 30 : 16)));
+    positions.forEach(([p, x, y]) => drawNameBubble(p, x, y, y - (p.hasFlag ? 30 : 16)));
   }
 
   // Debug aid: ?debug exposes onWallHit so wall damage can be previewed from the console.
