@@ -66,6 +66,29 @@
   // Browsers only allow audio after a user gesture.
   ['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, getAudioCtx, { once: true }));
 
+  // Background drums: loop quietly while the game screen is open.
+  const music = (() => {
+    const el = new Audio('assets/hitslab-war-battle-military-drums.mp3');
+    el.loop = true;
+    el.volume = 0.2;
+    el.preload = 'auto';
+    let wanted = false;
+    // If autoplay is blocked (e.g. a guest whose game was started by someone else), start on the next gesture.
+    const retry = () => { if (wanted && el.paused) el.play().catch(() => {}); };
+    ['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, retry));
+    return {
+      start() {
+        wanted = true;
+        if (el.paused) el.play().catch(() => {});
+      },
+      stop() {
+        wanted = false;
+        el.pause();
+        el.currentTime = 0;
+      },
+    };
+  })();
+
   // Sounds further from your tank are quieter and panned left/right by where they happen.
   function spatial(ac, x, y) {
     const out = ac.createGain();
@@ -715,6 +738,7 @@
     state.playing = false;
     releaseControls();
     engine.stop();
+    music.stop();
     $('game-view').style.display = 'none';
     $('game-over').style.display = 'none';
     $('lobby-card').style.display = 'block';
@@ -1214,6 +1238,7 @@
     document.body.classList.add('in-game');
     updateScoreboard(payload.players);
     playSound('start');
+    music.start();
 
     if (!state.rafId) state.rafId = requestAnimationFrame(render);
   });
