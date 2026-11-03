@@ -15,7 +15,7 @@
   const BULLET_SPEED = 9;
   const BULLET_LIFE_TICKS = 2 * TICK_RATE;
   const BULLET_SUBSTEP = 3;
-  const MUZZLE_OFFSET = 20;
+  const MUZZLE_OFFSET = 26; // shells leave from the barrel tip
   const FIRE_COOLDOWN_TICKS = 12;
   const MAX_BULLETS_PER_TANK = 1; // one shell in flight at a time, like Combat
   const SPIN_TICKS = Math.round(1.2 * TICK_RATE); // a hit tank spins out before respawning

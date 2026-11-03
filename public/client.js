@@ -113,17 +113,114 @@
 
   // ---------- Drawing helpers ----------
 
-  // Combat-style tank (shape from RetroTanks): two tracks, a body and a turret, facing +x.
+  // ---------- Pixel-art tank sprites ----------
+
+  // Sprites are drawn facing up on a 16x22 pixel grid, then rotated to the tank's heading.
+  const SPRITE_W = 16;
+  const SPRITE_H = 22;
+  const PX = 2; // screen pixels per sprite pixel
+  const HULL_CENTRE_Y = 13.5; // sprite row the tank pivots around (centre of the hull and tracks)
+  const spriteCache = new Map();
+
+  // Mixes a #rrggbb colour towards black (amt < 0) or white (amt > 0).
+  function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const target = amt < 0 ? 0 : 255;
+    const p = Math.abs(amt);
+    const mix = (v) => Math.round(v + (target - v) * p);
+    return `rgb(${mix(n >> 16)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`;
+  }
+
+  function buildTankSprite(color) {
+    const c = document.createElement('canvas');
+    c.width = SPRITE_W * PX;
+    c.height = SPRITE_H * PX;
+    const g = c.getContext('2d');
+    const P = {
+      outline: shade(color, -0.72),
+      track: shade(color, -0.6),
+      tread: shade(color, -0.38),
+      shadow: shade(color, -0.25),
+      mid: color,
+      light: shade(color, 0.28),
+      hi: shade(color, 0.55),
+    };
+    const px = (x, y, col) => {
+      g.fillStyle = col;
+      g.fillRect(x * PX, y * PX, PX, PX);
+    };
+
+    // Tracks: 3 wide on each side with a checkered tread pattern.
+    for (let y = 6; y <= 21; y++) {
+      for (const x0 of [0, 13]) {
+        for (let x = x0; x < x0 + 3; x++) {
+          const edge = x === x0 || x === x0 + 2;
+          px(x, y, (y + (edge ? 0 : 1)) % 2 ? P.tread : P.track);
+        }
+      }
+    }
+
+    // Hull: dark outline, lit top/left rim, shaded bottom/right rim.
+    for (let y = 7; y <= 20; y++) {
+      for (let x = 3; x <= 12; x++) {
+        let col = P.mid;
+        if (x === 3 || x === 12 || y === 7 || y === 20) col = P.outline;
+        else if (x === 4 || y === 8) col = P.light;
+        else if (x === 11 || y === 19) col = P.shadow;
+        px(x, y, col);
+      }
+    }
+    // Inner panel lines and an engine grille at the back.
+    for (let y = 10; y <= 17; y++) { px(5, y, P.shadow); px(10, y, P.shadow); }
+    for (let x = 6; x <= 9; x += 1) px(x, 18, x % 2 ? P.outline : P.shadow);
+
+    // Turret: shaded dome with a highlight and a hatch.
+    const tcx = 8;
+    const tcy = 13;
+    for (let y = 8; y <= 18; y++) {
+      for (let x = 3; x <= 12; x++) {
+        const d = Math.hypot(x + 0.5 - tcx, y + 0.5 - tcy);
+        if (d > 3.7) continue;
+        let col = P.light;
+        if (d > 2.9) col = P.outline;
+        else if (x + y <= tcx + tcy - 3) col = P.hi;
+        else if (x + y >= tcx + tcy + 2) col = P.shadow;
+        px(x, y, col);
+      }
+    }
+    px(8, 13, P.outline);
+    px(7, 14, P.shadow);
+    px(8, 14, P.shadow);
+
+    // Barrel with a muzzle brake at the tip.
+    for (let y = 2; y <= 10; y++) {
+      px(6, y, P.outline);
+      px(7, y, P.hi);
+      px(8, y, P.light);
+      px(9, y, P.outline);
+    }
+    for (let x = 6; x <= 9; x++) px(x, 0, P.outline);
+    px(6, 1, P.outline);
+    px(7, 1, P.light);
+    px(8, 1, P.mid);
+    px(9, 1, P.outline);
+    return c;
+  }
+
+  function tankSprite(color) {
+    if (!spriteCache.has(color)) spriteCache.set(color, buildTankSprite(color));
+    return spriteCache.get(color);
+  }
+
+  // Draws a tank centred on its hull; angle 0 points right (the sprite is drawn facing up).
   function drawTank(c, p, cx, cy, angleDeg, scale = 1) {
+    const sprite = tankSprite(p.color);
     c.save();
     c.translate(cx, cy);
-    c.rotate((angleDeg * Math.PI) / 180);
+    c.rotate(((angleDeg + 90) * Math.PI) / 180);
     c.scale(scale, scale);
-    c.fillStyle = p.color;
-    c.fillRect(-14, -13, 26, 6); // left track
-    c.fillRect(-14, 7, 26, 6); // right track
-    c.fillRect(-8, -8, 16, 16); // body
-    c.fillRect(0, -2.5, 19, 5); // turret
+    c.imageSmoothingEnabled = false; // keep the pixel art crisp
+    c.drawImage(sprite, -(SPRITE_W * PX) / 2, -HULL_CENTRE_Y * PX);
     c.restore();
   }
 
@@ -192,7 +289,7 @@
       const p = players.find((pl) => pl.number === i + 1);
       if (p) {
         // Each tank slowly turns its turret around, like it's scanning for targets.
-        drawTank(c, p, 32, 32, ((now / 25) + i * 90) % 360, 1.4);
+        drawTank(c, p, 32, 32, ((now / 25) + i * 90) % 360, 1.15);
       } else {
         c.strokeStyle = '#3a3a2a';
         c.setLineDash([4, 4]);

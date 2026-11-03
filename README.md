@@ -6,7 +6,7 @@ Based on [RetroTanks](https://github.com/enesser/retroTanks) by Eric J Nesser (M
 
 - **Link rooms**: share https://zakrowling.github.io/tankmates/mate and nobody needs a code. The first person to open it hosts and everyone else joins. If the host leaves, the next player takes over, so the room stays open while anyone is in it. Any 2–16 letters, numbers or dashes work as a room name.
 - **Room codes**: Create Room gives a 4-letter code (and invite link) for private games. Friends can join mid-game.
-- **Lobby**: 4 player slots, each with that player's tank in the Combat colours (red, blue, yellow, purple) and a random 4-letter name. Any player can start.
+- **Lobby**: 4 player slots, each with that player's detailed pixel-art tank (treaded tracks, shaded hull, domed turret, long barrel) in the Combat colours (red, blue, yellow, purple) and a random 4-letter name. Any player can start.
 - **Battle**: drive with arrow keys or WASD, fire with Space or Enter. One shell in flight per tank. A hit scores a point; the hit tank spins out, then respawns in its corner with a moment of protection.
 - **Winning**: first to 10 hits, or the highest score when the 3-minute timer runs out.
 - **Arena**: a mirrored field of walls so every corner is fair (layout in [`public/arena.js`](public/arena.js)).
