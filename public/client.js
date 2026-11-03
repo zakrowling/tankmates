@@ -925,22 +925,38 @@
 
   const isOuterCell = (arena, x, y) => x === 0 || y === 0 || x === arena.cols - 1 || y === arena.rows - 1;
 
-  function paintConcrete(g, arena, x, y) {
+  // Same as the engine's wallRect: the outer wall only fills the outer half of its cells.
+  function wallRect(arena, x, y) {
     const c = arena.cell;
+    let x0 = x * c;
+    let y0 = y * c;
+    let x1 = x0 + c;
+    let y1 = y0 + c;
+    if (x === 0) x1 = x0 + c / 2;
+    if (x === arena.cols - 1) x0 = x1 - c / 2;
+    if (y === 0) y1 = y0 + c / 2;
+    if (y === arena.rows - 1) y0 = y1 - c / 2;
+    return [x0, y0, x1, y1];
+  }
+
+  function paintConcrete(g, arena, x, y) {
     const rand = seededRandom(x * 7919 + y * 104729 + 3);
-    const px = x * c;
-    const py = y * c;
+    const [x0, y0, x1, y1] = wallRect(arena, x, y);
+    const w = x1 - x0;
+    const h = y1 - y0;
     g.fillStyle = '#6f6a5e';
-    g.fillRect(px, py, c, c);
-    for (let i = 0; i < 18; i++) {
+    g.fillRect(x0, y0, w, h);
+    for (let i = 0; i < 10; i++) {
       g.fillStyle = rand() < 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.12)';
-      g.fillRect(px + rand() * c, py + rand() * c, 2, 2);
+      g.fillRect(x0 + rand() * w, y0 + rand() * h, 2, 2);
     }
-    g.fillStyle = 'rgba(0,0,0,0.25)';
-    if ((x + y) % 2 === 0) g.fillRect(px + c - 1, py, 1, c);
-    g.fillRect(px, py + c - 1, c, 1);
-    g.fillStyle = 'rgba(255,255,255,0.08)';
-    g.fillRect(px, py, c, 1);
+    // Panel seams every other cell along the wall.
+    g.fillStyle = 'rgba(0,0,0,0.3)';
+    const horizontal = w > h;
+    if ((x + y) % 2 === 0) {
+      if (horizontal) g.fillRect(x1 - 1, y0, 1, h);
+      else g.fillRect(x0, y1 - 1, w, 1);
+    }
   }
 
   // Paints one brick block. damage 0 = intact (lightly weathered) up to maxHp - 1 = barely standing.
@@ -1040,9 +1056,10 @@
       for (let x = 0; x < arena.cols; x++) paintWallCell(g, arena, x, y);
     }
     // Inner shadow along the concrete perimeter so it reads as a raised wall.
+    const edge = arena.cell / 2;
     g.fillStyle = 'rgba(0, 0, 0, 0.35)';
-    g.fillRect(arena.cell, arena.cell, arena.width - 2 * arena.cell, 3);
-    g.fillRect(arena.cell, arena.cell, 3, arena.height - 2 * arena.cell);
+    g.fillRect(edge, edge, arena.width - 2 * edge, 3);
+    g.fillRect(edge, edge, 3, arena.height - 2 * edge);
     return layer;
   }
 
@@ -1059,7 +1076,11 @@
     g.fillStyle = '#000';
     const c = arena.cell;
     for (let y = 0; y < arena.rows; y++) {
-      for (let x = 0; x < arena.cols; x++) if (arena.walls[y][x] === 1) g.fillRect(x * c, y * c, c, c);
+      for (let x = 0; x < arena.cols; x++) {
+        if (arena.walls[y][x] !== 1) continue;
+        const [x0, y0, x1, y1] = wallRect(arena, x, y);
+        g.fillRect(x0, y0, x1 - x0, y1 - y0);
+      }
     }
     // Keep only the shadow, not the black blocks themselves (they sit under the wall layer anyway).
     return layer;
@@ -1488,11 +1509,11 @@
   function drawTimer() {
     const secs = Math.max(0, Math.ceil(state.ticksLeft * state.tickMs / 1000));
     const text = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-    ctx.font = '10px "Press Start 2P", monospace';
+    ctx.font = '8px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = secs <= 10 ? '#ff5555' : '#f5e6c8';
-    ctx.fillText(text, canvas.width / 2, state.arena.cell / 2 + 1);
+    ctx.fillText(text, canvas.width / 2, state.arena.cell / 4 + 1);
   }
 
   // The host runs the game; everyone else interpolates between the last two snapshots.

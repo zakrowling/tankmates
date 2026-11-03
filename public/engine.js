@@ -64,10 +64,27 @@
     return { cx: Math.floor(px / ARENA.cell), cy: Math.floor(py / ARENA.cell) };
   }
 
+  // Solid area of a wall cell. The outer concrete wall is only half a cell thick (its outer half),
+  // giving the playing field more room.
+  function wallRect(cx, cy) {
+    const c = ARENA.cell;
+    let x0 = cx * c;
+    let y0 = cy * c;
+    let x1 = x0 + c;
+    let y1 = y0 + c;
+    if (cx === 0) x1 = x0 + c / 2;
+    if (cx === ARENA.cols - 1) x0 = x1 - c / 2;
+    if (cy === 0) y1 = y0 + c / 2;
+    if (cy === ARENA.rows - 1) y0 = y1 - c / 2;
+    return [x0, y0, x1, y1];
+  }
+
   function isWallAt(px, py, walls = ARENA.walls) {
     const { cx, cy } = wallCellAt(px, py);
     if (cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols) return true;
-    return walls[cy][cx] === 1;
+    if (walls[cy][cx] !== 1) return false;
+    const [x0, y0, x1, y1] = wallRect(cx, cy);
+    return px >= x0 && px < x1 && py >= y0 && py < y1;
   }
 
   // Does a circle overlap any wall cell?
@@ -80,8 +97,11 @@
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
         if (cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols || walls[cy][cx] === 1) {
-          const nx = Math.max(cx * c, Math.min(x, (cx + 1) * c));
-          const ny = Math.max(cy * c, Math.min(y, (cy + 1) * c));
+          const [x0, y0, x1, y1] = cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols
+            ? [cx * c, cy * c, (cx + 1) * c, (cy + 1) * c]
+            : wallRect(cx, cy);
+          const nx = Math.max(x0, Math.min(x, x1));
+          const ny = Math.max(y0, Math.min(y, y1));
           if ((x - nx) ** 2 + (y - ny) ** 2 < r * r) return true;
         }
       }
@@ -548,5 +568,6 @@
     INVULNERABLE_TICKS,
     BULLET_LIFE_TICKS,
     circleHitsWall,
+    wallRect,
   };
 });

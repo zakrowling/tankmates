@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   GameRoom, generateRoomCode, ARENA, TANK_RADIUS, WIN_SCORE, GAME_SECONDS, TICK_RATE,
-  SPIN_TICKS, INVULNERABLE_TICKS, BULLET_LIFE_TICKS, circleHitsWall,
+  SPIN_TICKS, INVULNERABLE_TICKS, BULLET_LIFE_TICKS, circleHitsWall, wallRect,
   HIT_POINTS, HOLD_TICKS_PER_POINT, FLAG_START, FLAG_SPOTS, WALL_HP, MINE_ARM_TICKS,
 } = require('../public/engine.js');
 
@@ -135,7 +135,8 @@ test('walls stop tanks', () => {
   Object.assign(p, { x: 60, y: 60, angle: 180 }); // facing the left outer wall
   press(room, 'p1', { forward: true });
   run(60);
-  assert.ok(p.x >= ARENA.cell + TANK_RADIUS - 0.01, `x=${p.x}`);
+  assert.ok(p.x >= ARENA.cell / 2 + TANK_RADIUS - 0.01, `x=${p.x}`);
+  assert.ok(p.x < ARENA.cell + TANK_RADIUS - 1, 'can now drive into the old wall half');
   assert.equal(circleHitsWall(p.x, p.y, TANK_RADIUS), false);
 });
 
@@ -485,4 +486,12 @@ test('mines are cleared when their owner leaves and at the start of each game', 
   room.endGame('time');
   room.start('p1');
   assert.equal(room.mines.length, 0);
+});
+
+test('the outer concrete wall is half a cell thick', () => {
+  const c = ARENA.cell;
+  assert.deepEqual(wallRect(0, 5), [0, 5 * c, c / 2, 6 * c]);
+  assert.deepEqual(wallRect(ARENA.cols - 1, 5), [ARENA.width - c / 2, 5 * c, ARENA.width, 6 * c]);
+  assert.deepEqual(wallRect(5, 0), [5 * c, 0, 6 * c, c / 2]);
+  assert.equal(circleHitsWall(c / 2 + TANK_RADIUS + 0.5, ARENA.height / 2 - 100, TANK_RADIUS), false);
 });
