@@ -7,6 +7,7 @@
     ArrowLeft: 'left', a: 'left', A: 'left',
     ArrowRight: 'right', d: 'right', D: 'right',
     ' ': 'fire', Enter: 'fire',
+    x: 'mine', X: 'mine',
   };
   const FIELD_COLOR = '#2d4a1c';
   const WALL_COLOR = '#a97d5d'; // RetroTanks wall colour
@@ -33,7 +34,8 @@
     lastSnapshotAt: 0,
     playing: false,
     rafId: null,
-    controls: { forward: false, back: false, left: false, right: false, fire: false },
+    controls: { forward: false, back: false, left: false, right: false, fire: false, mine: false },
+    mines: [],
   };
 
   // ---------- Sound (all synthesized with Web Audio) ----------
@@ -146,6 +148,17 @@
           type: 'bandpass', from: 1500 + Math.random() * 2500, q: 2,
         });
       }
+    },
+    mineDropped(ac, out) {
+      const t = ac.currentTime;
+      osc(ac, out, { type: 'square', from: 300, to: 200, t0: t, dur: 0.05, peak: 0.08 });
+      osc(ac, out, { type: 'square', from: 900, t0: t + 0.9, dur: 0.06, peak: 0.05 }); // armed beep
+    },
+    // Landmine: a sharp crack under a deep, long boom.
+    mineBlast(ac, out) {
+      const t = ac.currentTime;
+      noiseBurst(ac, out, { t0: t, dur: 0.15, peak: 0.6, type: 'highpass', from: 3000, to: 1000 });
+      osc(ac, out, { from: 70, to: 22, t0: t, dur: 1.3, peak: 1, attack: 0.005 });
     },
     // Brick block giving way: a crunch and tumbling bricks.
     collapse(ac, out) {
@@ -1150,6 +1163,7 @@
     state.prevBullets = bullets;
     state.currBullets = bullets;
     state.blasts = [];
+    state.mines = payload.mines || [];
     smoke = [];
     state.flag = payload.flag;
     state.lastSnapshotAt = performance.now();
@@ -1174,6 +1188,7 @@
     state.currBullets = new Map(snapshot.bullets.map((b) => [b.id, b]));
     state.ticksLeft = snapshot.ticksLeft;
     state.flag = snapshot.flag;
+    state.mines = snapshot.mines || [];
     const now = performance.now();
     state.lastSnapshotAt = now;
 
@@ -1187,6 +1202,13 @@
         addScorch(ev.x, ev.y, true);
         playSound('explosion', ev.x, ev.y, ev.id === state.playerId ? 1.4 : 1);
         if (ev.hadFlag) playSound(ev.id === state.playerId ? 'flagLost' : 'flagRespawn', ev.x, ev.y);
+      } else if (ev.type === 'mineDropped') {
+        if (ev.by === state.playerId) playSound('mineDropped', ev.x, ev.y);
+      } else if (ev.type === 'mineExploded') {
+        // The 'hit' event that follows handles the tank explosion; add a bigger ground blast here.
+        state.blasts.push({ x: ev.x, y: ev.y, start: now, kind: 'explosion' });
+        addScorch(ev.x, ev.y, true);
+        playSound('mineBlast', ev.x, ev.y);
       } else if (ev.type === 'wallHit') {
         onWallHit(ev, now);
       } else if (ev.type === 'impact') {
@@ -1385,6 +1407,40 @@
     });
   }
 
+  // Landmines: a low disc in the owner's colour ring; armed mines blink a red light.
+  function drawMine(m, now) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(m.x + 1.5, m.y + 2, 8, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const grad = ctx.createRadialGradient(m.x - 2, m.y - 2, 1, m.x, m.y, 8);
+    grad.addColorStop(0, '#6b6a5c');
+    grad.addColorStop(1, '#2b2b24');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = m.color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Pressure plate and spokes.
+    ctx.fillStyle = '#4a4a40';
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    const blink = m.armed && Math.floor(now / 400) % 2 === 0;
+    ctx.fillStyle = blink ? '#ff3b2f' : m.armed ? '#5a1a14' : '#8a8a70';
+    if (blink) {
+      ctx.shadowColor = '#ff3b2f';
+      ctx.shadowBlur = 6;
+    }
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 1.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // A gold flag on a pole, gently waving. Carried flags fly from the tank's turret.
   function drawFlag(x, y, now, carried) {
     const poleH = carried ? 24 : 30;
@@ -1471,6 +1527,7 @@
       ctx.restore();
     });
 
+    state.mines.forEach((m) => drawMine(m, now));
     if (state.flag && !state.flag.holder) drawFlag(state.flag.x, state.flag.y, now, false);
 
     const positions = [];

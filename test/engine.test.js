@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {
   GameRoom, generateRoomCode, ARENA, TANK_RADIUS, WIN_SCORE, GAME_SECONDS, TICK_RATE,
   SPIN_TICKS, INVULNERABLE_TICKS, BULLET_LIFE_TICKS, circleHitsWall,
-  HIT_POINTS, HOLD_TICKS_PER_POINT, FLAG_START, FLAG_SPOTS, WALL_HP,
+  HIT_POINTS, HOLD_TICKS_PER_POINT, FLAG_START, FLAG_SPOTS, WALL_HP, MINE_ARM_TICKS,
 } = require('../public/engine.js');
 
 // Builds a room with a manual clock and records every message it sends.
@@ -35,7 +35,7 @@ function parkFlag(room) {
   room.flag = { x: -1000, y: -1000, holder: null };
 }
 
-const press = (room, id, controls) => room.input(id, { forward: false, back: false, left: false, right: false, fire: false, ...controls });
+const press = (room, id, controls) => room.input(id, { forward: false, back: false, left: false, right: false, fire: false, mine: false, ...controls });
 
 // Puts two tanks on the same open row, the shooter facing the target.
 function lineUp(room, shooter, target, gap = 120) {
@@ -385,4 +385,104 @@ test('a new game rebuilds destroyed walls', () => {
   room.start('p1');
   assert.equal(room.walls[t.cy][t.cx], 1);
   assert.equal(room.wallHp[t.cy][t.cx], WALL_HP);
+});
+
+// Drops a mine for player id and lets it arm.
+function dropArmedMine(room, run, id) {
+  press(room, id, { mine: true });
+  run(1);
+  press(room, id, {});
+  run(MINE_ARM_TICKS + 1);
+  return room.mines.find((m) => m.owner === id);
+}
+
+test('X drops a mine behind the tank; only one at a time per player', () => {
+  const { room, run, events } = startedRoom(1);
+  const p = room.players.get('p1');
+  Object.assign(p, { x: 300, y: 60, angle: 0 });
+  press(room, 'p1', { mine: true });
+  run(1);
+  assert.equal(room.mines.length, 1);
+  assert.ok(room.mines[0].x < p.x, 'dropped behind');
+  press(room, 'p1', {});
+  run(1);
+  press(room, 'p1', { mine: true });
+  run(1);
+  assert.equal(room.mines.length, 1);
+  assert.equal(events('mineDropped').length, 1);
+});
+
+test('an armed mine blows up a tank that rolls over it and scores for the layer', () => {
+  const { room, run, events } = startedRoom(2);
+  const [a, b] = ['p1', 'p2'].map((id) => room.players.get(id));
+  Object.assign(a, { x: 300, y: 60, angle: 0 });
+  const mine = dropArmedMine(room, run, 'p1');
+  Object.assign(a, { x: 600, y: 60 });
+  Object.assign(b, { x: mine.x + 5, y: mine.y, invulnerableTicks: 0 });
+  run(1);
+  assert.equal(b.status, 'hit');
+  assert.equal(a.score, 2);
+  assert.equal(room.mines.length, 0);
+  assert.equal(events('mineExploded')[0].id, 'p2');
+  run(40);
+  assert.equal(b.status, 'alive');
+  assert.deepEqual([b.x, b.y], [ARENA.spawns[1].x, ARENA.spawns[1].y]);
+
+  // With the old mine gone, the owner can lay a new one.
+  press(room, 'p1', { mine: true });
+  run(1);
+  assert.equal(room.mines.length, 1);
+});
+
+test('mines do not go off before arming, and the dropper is not hit while driving away', () => {
+  const { room, run } = startedRoom(1);
+  const p = room.players.get('p1');
+  Object.assign(p, { x: 300, y: 60, angle: 0 });
+  press(room, 'p1', { mine: true });
+  run(1);
+  press(room, 'p1', { forward: true });
+  run(MINE_ARM_TICKS + 5);
+  assert.equal(p.status, 'alive');
+  assert.equal(room.mines.length, 1);
+});
+
+test('your own armed mine can still get you', () => {
+  const { room, run } = startedRoom(1);
+  const p = room.players.get('p1');
+  Object.assign(p, { x: 300, y: 60, angle: 0 });
+  const mine = dropArmedMine(room, run, 'p1');
+  Object.assign(p, { x: mine.x, y: mine.y });
+  run(1);
+  assert.equal(p.status, 'hit');
+  assert.equal(p.score, 0, 'no points for blowing yourself up');
+});
+
+test('the flag carrier drops the flag where a mine gets them', () => {
+  const { room, run, events } = startedRoom(2);
+  const b = room.players.get('p2');
+  Object.assign(room.players.get('p1'), { x: 300, y: 60, angle: 0 });
+  const mine = dropArmedMine(room, run, 'p1');
+  room.players.get('p1').x = 700;
+  room.flag = { x: b.x, y: b.y, holder: null };
+  run(1);
+  assert.equal(room.flag.holder, 'p2');
+  Object.assign(b, { x: mine.x, y: mine.y, invulnerableTicks: 0 });
+  run(1);
+  assert.equal(b.hasFlag, false);
+  assert.equal(room.flag.holder, null);
+  assert.ok(Math.abs(room.flag.x - mine.x) < 1);
+  assert.equal(events('flagDropped').length, 1);
+});
+
+test('mines are cleared when their owner leaves and at the start of each game', () => {
+  const { room, run } = startedRoom(2);
+  Object.assign(room.players.get('p2'), { x: 300, y: 60, angle: 0 });
+  dropArmedMine(room, run, 'p2');
+  room.leave('p2');
+  assert.equal(room.mines.length, 0);
+  Object.assign(room.players.get('p1'), { x: 300, y: 60, angle: 0 });
+  dropArmedMine(room, run, 'p1');
+  room.endGame('time');
+  room.start('p1');
+  assert.equal(room.mines.length, 0);
 });

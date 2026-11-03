@@ -23,6 +23,9 @@
   const INVULNERABLE_TICKS = 2 * TICK_RATE;
   // Capture the flag: hold the flag to score; shooting the holder makes them drop it on the spot.
   const WIN_SCORE = 60;
+  const MINE_ARM_TICKS = TICK_RATE; // a mine arms 1s after being dropped, so you can drive off it
+  const MINE_TRIGGER_RADIUS = 20;
+  const MINE_DROP_OFFSET = 24; // dropped just behind the tank
   const WALL_HP = 3; // shots for an interior brick block to crumble away; the outer wall can't be destroyed
   const HOLD_TICKS_PER_POINT = TICK_RATE; // 1 point per second holding the flag
   const HIT_POINTS = 2;
@@ -102,7 +105,7 @@
 
   // ---------- Players ----------
 
-  const EMPTY_INPUT = { forward: false, back: false, left: false, right: false, fire: false };
+  const EMPTY_INPUT = { forward: false, back: false, left: false, right: false, fire: false, mine: false };
 
   function serializePlayer(p) {
     return {
@@ -119,6 +122,10 @@
       status: p.status,
       invulnerable: p.invulnerableTicks > 0,
     };
+  }
+
+  function serializeMine(m, tick) {
+    return { id: m.id, owner: m.owner, color: m.color, x: m.x, y: m.y, armed: tick >= m.armTick };
   }
 
   function serializeBullet(b) {
@@ -139,6 +146,7 @@
       this.hostId = null;
       this.players = new Map();
       this.bullets = [];
+      this.mines = [];
       this.nextBulletId = 1;
       this.started = false;
       this.loop = null;
@@ -189,6 +197,7 @@
       if (!this.players.delete(id)) return;
       if (leaver.hasFlag) this.respawnFlag();
       this.bullets = this.bullets.filter((b) => b.owner !== id);
+      this.mines = this.mines.filter((m) => m.owner !== id);
       if (this.players.size === 0) {
         this.stopLoop();
         return;
@@ -203,6 +212,7 @@
       this.tick = 0;
       this.ticksLeft = GAME_SECONDS * TICK_RATE;
       this.bullets = [];
+      this.mines = [];
       this.started = true;
       this.flag = { ...FLAG_START, holder: null };
       this.resetWalls();
@@ -243,6 +253,7 @@
       p.invulnerableTicks = 0;
       p.cooldown = 0;
       p.firePrev = false;
+      p.minePrev = false;
       p.moving = false;
       p.input = { ...EMPTY_INPUT };
       p.hasFlag = false;
@@ -284,6 +295,7 @@
         winScore: WIN_SCORE,
         ticksLeft: this.ticksLeft,
         bullets: this.bullets.map(serializeBullet),
+        mines: this.mines.map((m) => serializeMine(m, this.tick)),
         flag: this.serializeFlag(),
         ...this.lobbyPayload(),
       };
@@ -346,6 +358,7 @@
       const events = [];
       this.players.forEach((p) => this.stepPlayer(p, events));
       this.stepBullets(events);
+      this.stepMines(events);
       this.stepFlag(events);
 
       this.broadcast('state', {
@@ -353,6 +366,7 @@
         ticksLeft: this.ticksLeft,
         players: [...this.players.values()].map(serializePlayer),
         bullets: this.bullets.map(serializeBullet),
+        mines: this.mines.map((m) => serializeMine(m, this.tick)),
         flag: this.serializeFlag(),
         events,
       });
@@ -366,6 +380,7 @@
       this.stopLoop();
       this.started = false;
       this.bullets = [];
+      this.mines = [];
       const standings = [...this.players.values()].map(serializePlayer).sort((a, b) => b.score - a.score);
       this.broadcast('gameOver', { standings, reason, winnerId });
       this.broadcastLobby();
@@ -401,6 +416,8 @@
       // Fire on press (not while held), one shell in flight at a time.
       if (fire && !p.firePrev) this.tryFire(p, events);
       p.firePrev = fire;
+      if (p.input.mine && !p.minePrev) this.tryDropMine(p, events);
+      p.minePrev = p.input.mine;
     }
 
     canOccupy(p, x, y) {
@@ -447,6 +464,47 @@
       events.push({ type: 'wallHit', cx, cy, hp });
     }
 
+    // A tank is knocked out (by a shell or a mine): the attacker scores, the tank spins out,
+    // and any flag it carried drops where it was hit.
+    destroyTank(t, attackerId, events, cause) {
+      const attacker = attackerId !== t.id && this.players.get(attackerId);
+      if (attacker) attacker.score += HIT_POINTS;
+      const hadFlag = !!t.hasFlag;
+      t.status = 'hit';
+      t.spinTicks = SPIN_TICKS;
+      t.moving = false;
+      events.push({ type: 'hit', by: attackerId, id: t.id, x: t.x, y: t.y, hadFlag, cause });
+      if (hadFlag) this.dropFlag(t, events);
+    }
+
+    // One mine per player at a time, dropped behind the tank.
+    tryDropMine(p, events) {
+      if (this.mines.some((m) => m.owner === p.id)) return;
+      let x = p.x - Math.cos(rad(p.angle)) * MINE_DROP_OFFSET;
+      let y = p.y - Math.sin(rad(p.angle)) * MINE_DROP_OFFSET;
+      if (circleHitsWall(x, y, 6, this.walls)) {
+        x = p.x;
+        y = p.y;
+      }
+      const mine = { id: this.nextBulletId++, owner: p.id, color: p.color, x, y, armTick: this.tick + MINE_ARM_TICKS };
+      this.mines.push(mine);
+      events.push({ type: 'mineDropped', by: p.id, x, y });
+    }
+
+    stepMines(events) {
+      this.mines = this.mines.filter((m) => {
+        if (this.tick < m.armTick) return true;
+        for (const t of this.players.values()) {
+          if (t.status !== 'alive' || t.invulnerableTicks > 0) continue;
+          if (dist2(t, m) > MINE_TRIGGER_RADIUS ** 2) continue;
+          events.push({ type: 'mineExploded', by: m.owner, id: t.id, x: m.x, y: m.y });
+          this.destroyTank(t, m.owner, events, 'mine');
+          return false;
+        }
+        return true;
+      });
+    }
+
     stepBullets(events) {
       const steps = Math.ceil(BULLET_SPEED / BULLET_SUBSTEP);
       this.bullets = this.bullets.filter((b) => {
@@ -462,13 +520,7 @@
           for (const t of this.players.values()) {
             if (t.id === b.owner || t.status !== 'alive' || t.invulnerableTicks > 0) continue;
             if (dist2(t, b) > TANK_RADIUS * TANK_RADIUS) continue;
-            const shooter = this.players.get(b.owner);
-            if (shooter) shooter.score += HIT_POINTS;
-            t.status = 'hit';
-            t.spinTicks = SPIN_TICKS;
-            t.moving = false;
-            events.push({ type: 'hit', by: b.owner, id: t.id, x: t.x, y: t.y, hadFlag: !!t.hasFlag });
-            if (t.hasFlag) this.dropFlag(t, events);
+            this.destroyTank(t, b.owner, events, 'shell');
             return false;
           }
         }
@@ -491,6 +543,7 @@
     FLAG_SPOTS,
     GAME_SECONDS,
     WALL_HP,
+    MINE_ARM_TICKS,
     SPIN_TICKS,
     INVULNERABLE_TICKS,
     BULLET_LIFE_TICKS,
