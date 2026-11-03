@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {
   GameRoom, generateRoomCode, ARENA, TANK_RADIUS, WIN_SCORE, GAME_SECONDS, TICK_RATE,
   SPIN_TICKS, INVULNERABLE_TICKS, BULLET_LIFE_TICKS, circleHitsWall,
-  HIT_POINTS, HOLD_TICKS_PER_POINT, FLAG_START, FLAG_SPOTS,
+  HIT_POINTS, HOLD_TICKS_PER_POINT, FLAG_START, FLAG_SPOTS, WALL_HP,
 } = require('../public/engine.js');
 
 // Builds a room with a manual clock and records every message it sends.
@@ -326,4 +326,59 @@ test('a holder leaving the room respawns the flag', () => {
   room.leave('p2');
   assert.equal(room.flag.holder, null);
   assert.ok(room.flag.x > 0);
+});
+
+// The first interior brick block, and an open spot to its left on the same row to shoot from.
+function brickTarget() {
+  for (let cy = 1; cy < ARENA.rows - 1; cy++) {
+    for (let cx = 4; cx < ARENA.cols - 1; cx++) {
+      if (ARENA.walls[cy][cx] !== 1) continue;
+      const x = (cx - 3 + 0.5) * ARENA.cell;
+      const y = (cy + 0.5) * ARENA.cell;
+      if (!circleHitsWall(x, y, TANK_RADIUS) && ARENA.walls[cy][cx - 1] === 0 && ARENA.walls[cy][cx - 2] === 0) return { cx, cy, x, y };
+    }
+  }
+  throw new Error('no brick target');
+}
+
+test('shooting a brick block wears it down and it crumbles after enough hits', () => {
+  const { room, run, events } = startedRoom(1);
+  const p = room.players.get('p1');
+  const t = brickTarget();
+  for (let i = 1; i <= WALL_HP; i++) {
+    Object.assign(p, { x: t.x, y: t.y, angle: 0, cooldown: 0 });
+    press(room, 'p1', { fire: true });
+    run(1);
+    press(room, 'p1', {});
+    run(20);
+    assert.equal(room.wallHp[t.cy][t.cx], WALL_HP - i);
+  }
+  assert.equal(room.walls[t.cy][t.cx], 0, 'block is gone');
+  assert.equal(ARENA.walls[t.cy][t.cx], 1, 'the shared arena layout is untouched');
+  assert.deepEqual(events('wallHit').map((e) => e.hp), [2, 1, 0].slice(3 - WALL_HP));
+  assert.equal(circleHitsWall((t.cx + 0.5) * ARENA.cell, t.y, 4, room.walls), false);
+});
+
+test('the outer concrete wall cannot be destroyed', () => {
+  const { room, run } = startedRoom(1);
+  const p = room.players.get('p1');
+  for (let i = 0; i < WALL_HP + 2; i++) {
+    Object.assign(p, { x: 60, y: 60, angle: 180, cooldown: 0 });
+    press(room, 'p1', { fire: true });
+    run(1);
+    press(room, 'p1', {});
+    run(15);
+  }
+  assert.equal(room.walls[2][0], 1);
+});
+
+test('a new game rebuilds destroyed walls', () => {
+  const { room } = startedRoom(1);
+  const t = brickTarget();
+  room.walls[t.cy][t.cx] = 0;
+  room.wallHp[t.cy][t.cx] = 0;
+  room.endGame('time');
+  room.start('p1');
+  assert.equal(room.walls[t.cy][t.cx], 1);
+  assert.equal(room.wallHp[t.cy][t.cx], WALL_HP);
 });

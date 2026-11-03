@@ -23,6 +23,7 @@
   const INVULNERABLE_TICKS = 2 * TICK_RATE;
   // Capture the flag: hold the flag to score; shooting the holder knocks it to a new spot.
   const WIN_SCORE = 60;
+  const WALL_HP = 3; // shots for an interior brick block to crumble away; the outer wall can't be destroyed
   const HOLD_TICKS_PER_POINT = TICK_RATE; // 1 point per second holding the flag
   const HIT_POINTS = 2;
   const FLAG_PICKUP_RADIUS = 24;
@@ -54,15 +55,20 @@
 
   // ---------- Geometry ----------
 
-  function isWallAt(px, py) {
-    const cx = Math.floor(px / ARENA.cell);
-    const cy = Math.floor(py / ARENA.cell);
+  const isOuterCell = (cx, cy) => cx === 0 || cy === 0 || cx === ARENA.cols - 1 || cy === ARENA.rows - 1;
+
+  function wallCellAt(px, py) {
+    return { cx: Math.floor(px / ARENA.cell), cy: Math.floor(py / ARENA.cell) };
+  }
+
+  function isWallAt(px, py, walls = ARENA.walls) {
+    const { cx, cy } = wallCellAt(px, py);
     if (cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols) return true;
-    return ARENA.walls[cy][cx] === 1;
+    return walls[cy][cx] === 1;
   }
 
   // Does a circle overlap any wall cell?
-  function circleHitsWall(x, y, r) {
+  function circleHitsWall(x, y, r, walls = ARENA.walls) {
     const c = ARENA.cell;
     const x0 = Math.floor((x - r) / c);
     const x1 = Math.floor((x + r) / c);
@@ -70,7 +76,7 @@
     const y1 = Math.floor((y + r) / c);
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
-        if (cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols || ARENA.walls[cy][cx] === 1) {
+        if (cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols || walls[cy][cx] === 1) {
           const nx = Math.max(cx * c, Math.min(x, (cx + 1) * c));
           const ny = Math.max(cy * c, Math.min(y, (cy + 1) * c));
           if ((x - nx) ** 2 + (y - ny) ** 2 < r * r) return true;
@@ -139,6 +145,13 @@
       this.tick = 0;
       this.ticksLeft = 0;
       this.flag = { ...FLAG_START, holder: null };
+      this.resetWalls();
+    }
+
+    // Each room has its own copy of the walls, with hit points for the destructible brick blocks.
+    resetWalls() {
+      this.walls = ARENA.walls.map((row) => [...row]);
+      this.wallHp = ARENA.walls.map((row, cy) => row.map((t, cx) => (t === 1 && !isOuterCell(cx, cy) ? WALL_HP : 0)));
     }
 
     get size() {
@@ -192,6 +205,7 @@
       this.bullets = [];
       this.started = true;
       this.flag = { ...FLAG_START, holder: null };
+      this.resetWalls();
       this.players.forEach((p) => {
         p.score = 0;
         this.resetPlayer(p);
@@ -265,7 +279,7 @@
 
     gamePayload() {
       return {
-        arena: { width: ARENA.width, height: ARENA.height, cols: ARENA.cols, rows: ARENA.rows, cell: ARENA.cell, walls: ARENA.walls },
+        arena: { width: ARENA.width, height: ARENA.height, cols: ARENA.cols, rows: ARENA.rows, cell: ARENA.cell, walls: this.walls, wallHp: this.wallHp, maxWallHp: WALL_HP },
         tickRate: TICK_RATE,
         winScore: WIN_SCORE,
         ticksLeft: this.ticksLeft,
@@ -383,7 +397,7 @@
     }
 
     canOccupy(p, x, y) {
-      if (circleHitsWall(x, y, TANK_RADIUS)) return false;
+      if (circleHitsWall(x, y, TANK_RADIUS, this.walls)) return false;
       for (const o of this.players.values()) {
         if (o === p || o.status !== 'alive') continue;
         const before = dist2(p, o);
@@ -401,7 +415,10 @@
       const y = p.y + Math.sin(rad(p.angle)) * MUZZLE_OFFSET;
       p.cooldown = FIRE_COOLDOWN_TICKS;
       events.push({ type: 'fire', by: p.id, x, y });
-      if (isWallAt(x, y)) return; // barrel against a wall: the shell pops harmlessly
+      if (isWallAt(x, y, this.walls)) { // barrel against a wall: the shell hits it point blank
+        this.damageWall(x, y, events);
+        return;
+      }
       this.bullets.push({
         id: this.nextBulletId++,
         owner: p.id,
@@ -414,6 +431,15 @@
       });
     }
 
+    // A shell knocks bricks out of the block it hits; at 0 hit points the block crumbles away.
+    damageWall(x, y, events) {
+      const { cx, cy } = wallCellAt(x, y);
+      if (!this.wallHp[cy] || !this.wallHp[cy][cx]) return;
+      const hp = --this.wallHp[cy][cx];
+      if (hp <= 0) this.walls[cy][cx] = 0;
+      events.push({ type: 'wallHit', cx, cy, hp });
+    }
+
     stepBullets(events) {
       const steps = Math.ceil(BULLET_SPEED / BULLET_SUBSTEP);
       this.bullets = this.bullets.filter((b) => {
@@ -421,8 +447,9 @@
         for (let i = 0; i < steps; i++) {
           b.x += b.vx / steps;
           b.y += b.vy / steps;
-          if (isWallAt(b.x, b.y)) {
+          if (isWallAt(b.x, b.y, this.walls)) {
             events.push({ type: 'impact', x: b.x, y: b.y });
+            this.damageWall(b.x, b.y, events);
             return false;
           }
           for (const t of this.players.values()) {
@@ -456,6 +483,7 @@
     FLAG_START,
     FLAG_SPOTS,
     GAME_SECONDS,
+    WALL_HP,
     SPIN_TICKS,
     INVULNERABLE_TICKS,
     BULLET_LIFE_TICKS,

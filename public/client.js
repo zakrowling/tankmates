@@ -147,6 +147,15 @@
         });
       }
     },
+    // Brick block giving way: a crunch and tumbling bricks.
+    collapse(ac, out) {
+      const t = ac.currentTime;
+      noiseBurst(ac, out, { t0: t, dur: 0.6, peak: 0.55, from: 1600, to: 90 });
+      osc(ac, out, { from: 110, to: 40, t0: t, dur: 0.4, peak: 0.4 });
+      for (let i = 0; i < 8; i++) {
+        noiseBurst(ac, out, { t0: t + 0.08 + Math.random() * 0.5, dur: 0.05, peak: 0.12, type: 'bandpass', from: 700 + Math.random() * 900, q: 2 });
+      }
+    },
     flagTaken(ac, out) {
       const t = ac.currentTime;
       [523, 659, 784, 1047].forEach((f, i) => osc(ac, out, { type: 'square', from: f, t0: t + i * 0.08, dur: 0.1, peak: 0.08 }));
@@ -241,13 +250,14 @@
 
   // ---------- Drawing helpers ----------
 
-  // ---------- Pixel-art tank sprites ----------
+  // ---------- Military tank sprites ----------
 
-  // Sprites are drawn facing up on a 16x22 pixel grid, then rotated to the tank's heading.
-  const SPRITE_W = 16;
-  const SPRITE_H = 22;
-  const PX = 2; // screen pixels per sprite pixel
-  const HULL_CENTRE_Y = 13.5; // sprite row the tank pivots around (centre of the hull and tracks)
+  // Tanks are drawn facing up in a 36x54 unit box (1 unit = 1 game pixel), at RES x resolution
+  // for crisp detail, then rotated to the tank's heading. The hull centre is the pivot.
+  const SPRITE_W = 36;
+  const SPRITE_H = 54;
+  const PIVOT = { x: 18, y: 30 };
+  const RES = 3;
   const spriteCache = new Map();
 
   // Mixes a #rrggbb colour towards black (amt < 0) or white (amt > 0).
@@ -259,96 +269,301 @@
     return `rgb(${mix(n >> 16)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`;
   }
 
-  function buildTankSprite(color) {
+  // Four tank designs, one per player slot, each in its own paint scheme.
+  const TANK_DESIGNS = [
+    { name: 'Main battle tank', paint: '#b49b68', draw: drawMBT },
+    { name: 'Heavy tank', paint: '#62655b', draw: drawHeavy },
+    { name: 'Medium tank', paint: '#5d6537', draw: drawMedium },
+    { name: 'Modern tank', paint: '#4b5c3b', draw: drawModern },
+  ];
+
+  function poly(g, pts) {
+    g.beginPath();
+    pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+    g.closePath();
+  }
+
+  // Fill a shape lit from the top-left, with a dark outline.
+  function solid(g, build, base, { light = 0.25, dark = -0.35, x0 = 0, x1 = SPRITE_W, outline = -0.6, lw = 0.8 } = {}) {
+    build();
+    const grad = g.createLinearGradient(x0, 0, x1, 0);
+    grad.addColorStop(0, shade(base, light));
+    grad.addColorStop(0.45, base);
+    grad.addColorStop(1, shade(base, dark));
+    g.fillStyle = grad;
+    g.fill();
+    g.strokeStyle = shade(base, outline);
+    g.lineWidth = lw;
+    g.stroke();
+  }
+
+  function tracks(g, x, y, w, h, base) {
+    for (const tx of [x, SPRITE_W - x - w]) {
+      g.fillStyle = shade(base, -0.75);
+      roundRect(g, tx, y, w, h, 2);
+      g.fill();
+      // Track links.
+      g.fillStyle = shade(base, -0.55);
+      for (let ty = y + 1; ty < y + h - 1; ty += 2.2) g.fillRect(tx + 0.6, ty, w - 1.2, 1.1);
+      g.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      g.fillRect(tx + 0.6, y + 1, 0.8, h - 2);
+    }
+  }
+
+  function barrel(g, x, y0, y1, w, base) {
+    solid(g, () => { g.beginPath(); g.rect(x - w / 2, y0, w, y1 - y0); }, base, { x0: x - w / 2, x1: x + w / 2, light: 0.35, dark: -0.4 });
+  }
+
+  function hatch(g, x, y, r, base) {
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fillStyle = shade(base, -0.15);
+    g.fill();
+    g.strokeStyle = shade(base, -0.6);
+    g.lineWidth = 0.6;
+    g.stroke();
+    g.beginPath();
+    g.arc(x - r * 0.25, y - r * 0.25, r * 0.45, 0, Math.PI * 2);
+    g.fillStyle = shade(base, 0.2);
+    g.fill();
+  }
+
+  function panelLine(g, x0, y0, x1, y1, base) {
+    g.strokeStyle = shade(base, -0.45);
+    g.lineWidth = 0.5;
+    g.beginPath();
+    g.moveTo(x0, y0);
+    g.lineTo(x1, y1);
+    g.stroke();
+  }
+
+  // Team markings: a coloured stripe across the turret and a star on the hull.
+  function teamStripe(g, build, team) {
+    g.save();
+    build();
+    g.clip();
+    g.fillStyle = team;
+    g.globalAlpha = 0.9;
+    g.fillRect(0, 0, SPRITE_W, SPRITE_H);
+    g.restore();
+  }
+
+  function star(g, x, y, r, color) {
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const rr = i % 2 ? r * 0.45 : r;
+      g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    g.closePath();
+    g.fillStyle = color;
+    g.fill();
+  }
+
+  // P1: angular modern main battle tank with side skirts and a long smoothbore gun.
+  function drawMBT(g, paint, team) {
+    tracks(g, 3, 12, 7, 38, paint);
+    solid(g, () => poly(g, [[8, 13], [28, 13], [30, 16], [30, 49], [6, 49], [6, 16]]), paint);
+    // Side skirts.
+    for (const x of [3, 26]) {
+      solid(g, () => { g.beginPath(); g.rect(x, 15, 7, 30); }, shade(paint, -0.05), { x0: x, x1: x + 7 });
+      for (let y = 20; y < 45; y += 6) panelLine(g, x, y, x + 7, y, paint);
+    }
+    panelLine(g, 9, 44, 27, 44, paint);
+    for (let x = 11; x <= 25; x += 2.5) panelLine(g, x, 45, x, 48.5, paint);
+    star(g, 18, 46.5, 2, team);
+    // Turret with bustle rack.
+    g.fillStyle = shade(paint, -0.5);
+    g.fillRect(9, 39, 18, 4);
+    for (let x = 10; x <= 26; x += 2) panelLine(g, x, 39, x, 43, paint);
+    const turret = () => poly(g, [[9, 21], [27, 21], [30, 27], [29, 39], [7, 39], [6, 27]]);
+    solid(g, turret, shade(paint, 0.05), { x0: 6, x1: 30 });
+    teamStripe(g, () => { g.beginPath(); g.rect(6, 35, 24, 3); }, team);
+    panelLine(g, 9, 21, 7, 27, paint);
+    panelLine(g, 27, 21, 29, 27, paint);
+    g.fillStyle = shade(paint, -0.4);
+    g.fillRect(10, 23, 4, 3); // gunner's sight
+    hatch(g, 23.5, 31, 2.6, paint);
+    hatch(g, 12.5, 32, 2.2, paint);
+    barrel(g, 18, 1, 22, 2.6, shade(paint, -0.05));
+    g.fillStyle = shade(paint, -0.45);
+    g.fillRect(16.4, 9, 3.2, 3); // bore evacuator
+    g.fillRect(16.6, 1, 2.8, 1);
+  }
+
+  // P2: boxy WWII heavy tank with wide exposed tracks, square turret and muzzle brake.
+  function drawHeavy(g, paint, team) {
+    tracks(g, 2, 11, 8, 41, paint);
+    solid(g, () => { g.beginPath(); g.rect(6, 12, 24, 39); }, paint, { x0: 6, x1: 30 });
+    // Spare track links on the glacis and tow cables down the sides.
+    for (let x = 9; x <= 25; x += 4) {
+      g.fillStyle = shade(paint, -0.55);
+      g.fillRect(x, 13.5, 3, 2.2);
+    }
+    g.strokeStyle = shade(paint, -0.5);
+    g.lineWidth = 0.7;
+    for (const x of [7.5, 28.5]) {
+      g.beginPath();
+      g.moveTo(x, 18);
+      for (let y = 18; y < 48; y += 3) g.lineTo(x + (y % 6 ? 0.6 : -0.6), y);
+      g.stroke();
+    }
+    g.fillStyle = shade(paint, -0.4);
+    g.fillRect(11, 45, 14, 4); // engine deck grille
+    for (let x = 12; x < 25; x += 2) panelLine(g, x, 45, x, 49, shade(paint, 0.3));
+    star(g, 9.5, 47, 1.8, team);
+    // Square turret with rounded corners.
+    const turret = () => roundRect(g, 9, 20, 18, 19, 3);
+    solid(g, turret, shade(paint, 0.04), { x0: 9, x1: 27 });
+    teamStripe(g, () => { g.beginPath(); g.rect(9, 33, 18, 3); }, team);
+    g.fillStyle = shade(paint, -0.45);
+    g.fillRect(14, 18, 8, 3); // gun mantlet
+    hatch(g, 22.5, 26, 2.6, paint);
+    hatch(g, 13, 29, 2, paint);
+    barrel(g, 18, 3, 19, 3.6, paint);
+    // Muzzle brake.
+    solid(g, () => { g.beginPath(); g.rect(15.6, 0.5, 4.8, 3.5); }, shade(paint, -0.1), { x0: 15.6, x1: 20.4 });
+  }
+
+  // P3: WWII medium tank with a rounded cast turret, short gun and stowage.
+  function drawMedium(g, paint, team) {
+    tracks(g, 4, 13, 7, 37, paint);
+    solid(g, () => {
+      g.beginPath();
+      g.moveTo(9, 13);
+      g.lineTo(27, 13);
+      g.quadraticCurveTo(30, 13, 30, 17);
+      g.lineTo(30, 46);
+      g.quadraticCurveTo(30, 50, 26, 50);
+      g.lineTo(10, 50);
+      g.quadraticCurveTo(6, 50, 6, 46);
+      g.lineTo(6, 17);
+      g.quadraticCurveTo(6, 13, 9, 13);
+      g.closePath();
+    }, paint);
+    // Stowage: rolled tarp and ammo boxes on the rear deck.
+    solid(g, () => roundRect(g, 9, 43, 18, 3, 1.5), '#6b5a3a', { x0: 9, x1: 27 });
+    for (const x of [9, 22]) solid(g, () => { g.beginPath(); g.rect(x, 46.5, 5, 2.5); }, '#4e4a2c', { x0: x, x1: x + 5 });
+    hatch(g, 11.5, 17, 2, paint); // driver hatches
+    hatch(g, 24.5, 17, 2, paint);
+    star(g, 18, 18, 2.8, '#f2efe4');
+    // Rounded cast turret.
+    const turret = () => { g.beginPath(); g.ellipse(18, 31, 9.5, 9, 0, 0, Math.PI * 2); };
+    g.save();
+    turret();
+    const tg = g.createRadialGradient(15, 28, 1, 18, 31, 10);
+    tg.addColorStop(0, shade(paint, 0.35));
+    tg.addColorStop(0.6, paint);
+    tg.addColorStop(1, shade(paint, -0.35));
+    g.fillStyle = tg;
+    g.fill();
+    g.strokeStyle = shade(paint, -0.6);
+    g.lineWidth = 0.8;
+    g.stroke();
+    g.restore();
+    g.save();
+    g.beginPath();
+    g.ellipse(18, 31, 9.5, 9, 0, 0, Math.PI * 2);
+    g.clip();
+    teamStripe(g, () => { g.beginPath(); g.rect(8, 35, 20, 3); }, team);
+    g.restore();
+    hatch(g, 21.5, 30, 2.8, paint);
+    // Antenna.
+    g.strokeStyle = '#222';
+    g.lineWidth = 0.5;
+    g.beginPath();
+    g.moveTo(13, 35);
+    g.lineTo(9, 40);
+    g.stroke();
+    g.fillStyle = shade(paint, -0.4);
+    g.fillRect(15, 20.5, 6, 2.5); // mantlet
+    barrel(g, 18, 6, 21, 2.4, paint);
+  }
+
+  // P4: modern tank with a low dome turret, reactive armour blocks, fume extractor and fuel drums.
+  function drawModern(g, paint, team) {
+    tracks(g, 3, 12, 7, 38, paint);
+    solid(g, () => poly(g, [[7, 12], [29, 12], [31, 15], [31, 47], [29, 50], [7, 50], [5, 47], [5, 15]]), paint);
+    for (const x of [3, 27]) solid(g, () => { g.beginPath(); g.rect(x, 14, 6, 33); }, shade(paint, -0.08), { x0: x, x1: x + 6 });
+    // External fuel drums on the rear.
+    for (const x of [12, 24]) {
+      solid(g, () => { g.beginPath(); g.ellipse(x, 50, 4, 2.6, 0, 0, Math.PI * 2); }, '#3f4a30', { x0: x - 4, x1: x + 4 });
+      panelLine(g, x - 2, 50, x + 2, 50, paint);
+    }
+    star(g, 9, 45, 1.8, team);
+    // Dome turret.
+    g.save();
+    g.beginPath();
+    g.ellipse(18, 31, 10.5, 10, 0, 0, Math.PI * 2);
+    const tg = g.createRadialGradient(14.5, 27.5, 1, 18, 31, 11);
+    tg.addColorStop(0, shade(paint, 0.35));
+    tg.addColorStop(0.6, paint);
+    tg.addColorStop(1, shade(paint, -0.4));
+    g.fillStyle = tg;
+    g.fill();
+    g.strokeStyle = shade(paint, -0.6);
+    g.lineWidth = 0.8;
+    g.stroke();
+    g.restore();
+    // Reactive armour blocks around the turret front.
+    for (let i = -3; i <= 3; i++) {
+      if (i === 0) continue;
+      const a = -Math.PI / 2 + i * 0.32;
+      const bx = 18 + Math.cos(a) * 9;
+      const by = 31 + Math.sin(a) * 9;
+      g.save();
+      g.translate(bx, by);
+      g.rotate(a + Math.PI / 2);
+      solid(g, () => { g.beginPath(); g.rect(-1.6, -1.3, 3.2, 2.6); }, shade(paint, 0.08), { x0: -1.6, x1: 1.6 });
+      g.restore();
+    }
+    g.save();
+    g.beginPath();
+    g.ellipse(18, 31, 10.5, 10, 0, 0, Math.PI * 2);
+    g.clip();
+    teamStripe(g, () => { g.beginPath(); g.rect(7, 35.5, 22, 3); }, team);
+    g.restore();
+    hatch(g, 22.5, 31, 2.6, paint);
+    hatch(g, 13, 33, 2.2, paint);
+    g.fillStyle = '#20231c';
+    g.fillRect(11, 25, 3.5, 2.5); // IR searchlight
+    g.fillStyle = 'rgba(180, 60, 40, 0.8)';
+    g.fillRect(11.6, 25.5, 2.3, 1.4);
+    barrel(g, 18, 1, 22, 2.4, paint);
+    solid(g, () => { g.beginPath(); g.rect(16.1, 11, 3.8, 4); }, shade(paint, -0.1), { x0: 16.1, x1: 19.9 }); // fume extractor
+  }
+
+  function buildTankSprite(number, team) {
     const c = document.createElement('canvas');
-    c.width = SPRITE_W * PX;
-    c.height = SPRITE_H * PX;
+    c.width = SPRITE_W * RES;
+    c.height = SPRITE_H * RES;
     const g = c.getContext('2d');
-    const P = {
-      outline: shade(color, -0.72),
-      track: shade(color, -0.6),
-      tread: shade(color, -0.38),
-      shadow: shade(color, -0.25),
-      mid: color,
-      light: shade(color, 0.28),
-      hi: shade(color, 0.55),
-    };
-    const px = (x, y, col) => {
-      g.fillStyle = col;
-      g.fillRect(x * PX, y * PX, PX, PX);
-    };
-
-    // Tracks: 3 wide on each side with a checkered tread pattern.
-    for (let y = 6; y <= 21; y++) {
-      for (const x0 of [0, 13]) {
-        for (let x = x0; x < x0 + 3; x++) {
-          const edge = x === x0 || x === x0 + 2;
-          px(x, y, (y + (edge ? 0 : 1)) % 2 ? P.tread : P.track);
-        }
-      }
-    }
-
-    // Hull: dark outline, lit top/left rim, shaded bottom/right rim.
-    for (let y = 7; y <= 20; y++) {
-      for (let x = 3; x <= 12; x++) {
-        let col = P.mid;
-        if (x === 3 || x === 12 || y === 7 || y === 20) col = P.outline;
-        else if (x === 4 || y === 8) col = P.light;
-        else if (x === 11 || y === 19) col = P.shadow;
-        px(x, y, col);
-      }
-    }
-    // Inner panel lines and an engine grille at the back.
-    for (let y = 10; y <= 17; y++) { px(5, y, P.shadow); px(10, y, P.shadow); }
-    for (let x = 6; x <= 9; x += 1) px(x, 18, x % 2 ? P.outline : P.shadow);
-
-    // Turret: shaded dome with a highlight and a hatch.
-    const tcx = 8;
-    const tcy = 13;
-    for (let y = 8; y <= 18; y++) {
-      for (let x = 3; x <= 12; x++) {
-        const d = Math.hypot(x + 0.5 - tcx, y + 0.5 - tcy);
-        if (d > 3.7) continue;
-        let col = P.light;
-        if (d > 2.9) col = P.outline;
-        else if (x + y <= tcx + tcy - 3) col = P.hi;
-        else if (x + y >= tcx + tcy + 2) col = P.shadow;
-        px(x, y, col);
-      }
-    }
-    px(8, 13, P.outline);
-    px(7, 14, P.shadow);
-    px(8, 14, P.shadow);
-
-    // Barrel with a muzzle brake at the tip.
-    for (let y = 2; y <= 10; y++) {
-      px(6, y, P.outline);
-      px(7, y, P.hi);
-      px(8, y, P.light);
-      px(9, y, P.outline);
-    }
-    for (let x = 6; x <= 9; x++) px(x, 0, P.outline);
-    px(6, 1, P.outline);
-    px(7, 1, P.light);
-    px(8, 1, P.mid);
-    px(9, 1, P.outline);
+    g.scale(RES, RES);
+    g.lineJoin = 'round';
+    const design = TANK_DESIGNS[(number - 1) % TANK_DESIGNS.length];
+    design.draw(g, design.paint, team);
     return c;
   }
 
-  function tankSprite(color) {
-    if (!spriteCache.has(color)) spriteCache.set(color, buildTankSprite(color));
-    return spriteCache.get(color);
+  function tankSprite(number, team) {
+    const key = `${number}|${team}`;
+    if (!spriteCache.has(key)) spriteCache.set(key, buildTankSprite(number, team));
+    return spriteCache.get(key);
   }
 
   // Draws a tank centred on its hull; angle 0 points right (the sprite is drawn facing up).
   function drawTank(c, p, cx, cy, angleDeg, scale = 1) {
-    const sprite = tankSprite(p.color);
+    const sprite = tankSprite(p.number || 1, p.color);
     c.save();
     c.translate(cx, cy);
     c.rotate(((angleDeg + 90) * Math.PI) / 180);
     c.scale(scale, scale);
-    c.imageSmoothingEnabled = false; // keep the pixel art crisp
-    c.drawImage(sprite, -(SPRITE_W * PX) / 2, -HULL_CENTRE_Y * PX);
+    // Ground shadow.
+    c.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    c.beginPath();
+    c.ellipse(2, 3, 17, 21, 0, 0, Math.PI * 2);
+    c.fill();
+    c.drawImage(sprite, -PIVOT.x, -PIVOT.y, SPRITE_W, SPRITE_H);
     c.restore();
   }
 
@@ -417,7 +632,7 @@
       const p = players.find((pl) => pl.number === i + 1);
       if (p) {
         // Each tank slowly turns its turret around, like it's scanning for targets.
-        drawTank(c, p, 32, 32, ((now / 25) + i * 90) % 360, 1.15);
+        drawTank(c, p, 32, 32, ((now / 25) + i * 90) % 360, 0.95);
       } else {
         c.strokeStyle = '#3a3a2a';
         c.setLineDash([4, 4]);
@@ -663,104 +878,193 @@
     }
   }
 
-  // Rubble heaps of broken brick and concrete; the outer wall is reinforced concrete.
-  function paintWalls(g, arena, rand) {
-    const c = arena.cell;
-    const isWall = (x, y) => arena.walls[y] && arena.walls[y][x] === 1;
-    const isOuter = (x, y) => x === 0 || y === 0 || x === arena.cols - 1 || y === arena.rows - 1;
+  // ---------- Walls ----------
+  // Walls live on their own layer so a single block can be redrawn as it's shot to pieces.
+  // Interior blocks are classic red brick, already a little crumbled; the outer wall is concrete.
 
-    // Drop shadow under every wall, offset down-right.
+  const BRICK_H = 6; // 4 courses per 24px cell
+  const BRICK_W = 12;
+  const MORTAR = '#6b5f52';
+  const BRICK_TONES = ['#9b3b2b', '#a8432f', '#8e3527', '#b04a35', '#963d2c', '#a33f30', '#874031'];
+
+  const isOuterCell = (arena, x, y) => x === 0 || y === 0 || x === arena.cols - 1 || y === arena.rows - 1;
+
+  function paintConcrete(g, arena, x, y) {
+    const c = arena.cell;
+    const rand = seededRandom(x * 7919 + y * 104729 + 3);
+    const px = x * c;
+    const py = y * c;
+    g.fillStyle = '#6f6a5e';
+    g.fillRect(px, py, c, c);
+    for (let i = 0; i < 18; i++) {
+      g.fillStyle = rand() < 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.12)';
+      g.fillRect(px + rand() * c, py + rand() * c, 2, 2);
+    }
+    g.fillStyle = 'rgba(0,0,0,0.25)';
+    if ((x + y) % 2 === 0) g.fillRect(px + c - 1, py, 1, c);
+    g.fillRect(px, py + c - 1, c, 1);
+    g.fillStyle = 'rgba(255,255,255,0.08)';
+    g.fillRect(px, py, c, 1);
+  }
+
+  // Paints one brick block. damage 0 = intact (lightly weathered) up to maxHp - 1 = barely standing.
+  function paintBrick(g, arena, x, y, damage, maxHp) {
+    const c = arena.cell;
+    const px = x * c;
+    const py = y * c;
+    const rand = seededRandom(x * 7919 + y * 104729);
+    const wear = damage / Math.max(1, maxHp - 1); // 0..1
     g.save();
-    g.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    g.filter = 'blur(4px)';
-    for (let y = 0; y < arena.rows; y++) {
-      for (let x = 0; x < arena.cols; x++) if (isWall(x, y)) g.fillRect(x * c + 5, y * c + 6, c, c);
+    g.beginPath();
+    g.rect(px, py, c, c);
+    g.clip();
+    // Mortar bed.
+    g.fillStyle = MORTAR;
+    g.fillRect(px, py, c, c);
+    for (let course = 0; course < c / BRICK_H; course++) {
+      const gy = py + course * BRICK_H;
+      const stagger = (Math.floor(gy / BRICK_H) % 2) * (BRICK_W / 2);
+      // Bricks follow one global grid, so a brick spanning two blocks keeps its colour across both.
+      for (let bx = Math.floor((px - stagger) / BRICK_W) * BRICK_W + stagger; bx < px + c; bx += BRICK_W) {
+        const brand = seededRandom(Math.floor(bx) * 92821 + gy * 68917 + 11);
+        // Missing bricks: a few even when intact, many more as the block takes hits (per block).
+        if (rand() < 0.04 + wear * 0.5) {
+          g.fillStyle = 'rgba(30, 22, 18, 0.85)';
+          g.fillRect(bx + 0.5, gy + 0.5, BRICK_W - 1, BRICK_H - 1);
+          continue;
+        }
+        const tone = BRICK_TONES[Math.floor(brand() * BRICK_TONES.length)];
+        const bw = BRICK_W - 1;
+        const bh = BRICK_H - 1;
+        g.fillStyle = tone;
+        g.fillRect(bx + 0.5, gy + 0.5, bw, bh);
+        // Lit top edge, shaded bottom edge, and a little surface grain.
+        g.fillStyle = 'rgba(255, 200, 170, 0.18)';
+        g.fillRect(bx + 0.5, gy + 0.5, bw, 1);
+        g.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        g.fillRect(bx + 0.5, gy + bh - 0.5, bw, 1);
+        for (let k = 0; k < 3; k++) {
+          g.fillStyle = brand() < 0.5 ? 'rgba(0,0,0,0.18)' : 'rgba(255,220,200,0.12)';
+          g.fillRect(bx + 1 + brand() * (bw - 2), gy + 1 + brand() * (bh - 2), 1, 1);
+        }
+        // Chipped corners: some from the start (old, crumbling brick), more with damage.
+        if (brand() < 0.25 || rand() < wear * 0.5) {
+          g.fillStyle = MORTAR;
+          const left = brand() < 0.5;
+          const cw = 2 + brand() * 3;
+          g.beginPath();
+          g.moveTo(left ? bx : bx + bw + 1, gy);
+          g.lineTo(left ? bx + cw : bx + bw + 1 - cw, gy);
+          g.lineTo(left ? bx : bx + bw + 1, gy + 2 + brand() * 2);
+          g.fill();
+        }
+      }
+    }
+    // Cracks spread as the block is damaged.
+    const cracks = Math.round(wear * 4) + (rand() < 0.4 ? 1 : 0);
+    g.strokeStyle = 'rgba(25, 18, 14, 0.8)';
+    g.lineWidth = 0.8;
+    for (let k = 0; k < cracks; k++) {
+      let cx = px + rand() * c;
+      let cy = py + rand() * c;
+      g.beginPath();
+      g.moveTo(cx, cy);
+      for (let seg = 0; seg < 4; seg++) {
+        cx += (rand() - 0.5) * 10;
+        cy += (rand() - 0.3) * 8;
+        g.lineTo(cx, cy);
+      }
+      g.stroke();
+    }
+    // Soot from shell hits.
+    if (wear > 0) {
+      const grad = g.createRadialGradient(px + c / 2, py + c / 2, 0, px + c / 2, py + c / 2, c * 0.8);
+      grad.addColorStop(0, `rgba(20, 14, 10, ${0.25 + wear * 0.35})`);
+      grad.addColorStop(1, 'rgba(20, 14, 10, 0)');
+      g.fillStyle = grad;
+      g.fillRect(px, py, c, c);
     }
     g.restore();
+  }
 
-    // Concrete outer wall with panel seams, stains and hazard stripes at the corners.
+  function paintWallCell(g, arena, x, y) {
+    const c = arena.cell;
+    g.clearRect(x * c, y * c, c, c);
+    if (arena.walls[y][x] !== 1) return;
+    if (isOuterCell(arena, x, y)) paintConcrete(g, arena, x, y);
+    else paintBrick(g, arena, x, y, arena.maxWallHp - arena.wallHp[y][x], arena.maxWallHp);
+  }
+
+  function buildWallLayer(arena) {
+    const layer = document.createElement('canvas');
+    layer.width = arena.width;
+    layer.height = arena.height;
+    const g = layer.getContext('2d');
     for (let y = 0; y < arena.rows; y++) {
-      for (let x = 0; x < arena.cols; x++) {
-        if (!isWall(x, y) || !isOuter(x, y)) continue;
-        const px = x * c;
-        const py = y * c;
-        g.fillStyle = '#6f6a5e';
-        g.fillRect(px, py, c, c);
-        for (let i = 0; i < 18; i++) {
-          g.fillStyle = rand() < 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.12)';
-          g.fillRect(px + rand() * c, py + rand() * c, 2, 2);
-        }
-        g.fillStyle = 'rgba(0,0,0,0.25)';
-        if ((x + y) % 2 === 0) g.fillRect(px + c - 1, py, 1, c);
-        g.fillRect(px, py + c - 1, c, 1);
-        g.fillStyle = 'rgba(255,255,255,0.08)';
-        g.fillRect(px, py, c, 1);
-      }
+      for (let x = 0; x < arena.cols; x++) paintWallCell(g, arena, x, y);
     }
-    // Inner edge highlight so the arena boundary reads as a raised wall.
+    // Inner shadow along the concrete perimeter so it reads as a raised wall.
     g.fillStyle = 'rgba(0, 0, 0, 0.35)';
-    g.fillRect(c, c, arena.width - 2 * c, 3);
-    g.fillRect(c, c, 3, arena.height - 2 * c);
+    g.fillRect(arena.cell, arena.cell, arena.width - 2 * arena.cell, 3);
+    g.fillRect(arena.cell, arena.cell, 3, arena.height - 2 * arena.cell);
+    return layer;
+  }
 
-    // Rubble on interior walls: heaps of broken brick, concrete chunks and charred debris.
-    const RUBBLE = ['#8a3b2a', '#9c4a35', '#7a3426', '#a35a40', '#7d7a72', '#6b675f', '#8f8a7e', '#4a3a30', '#3b302a'];
-    const fragment = (cx, cy, size) => {
-      const pts = 5 + Math.floor(rand() * 3);
-      const rot = rand() * Math.PI;
-      const col = RUBBLE[Math.floor(rand() * RUBBLE.length)];
-      const path = [];
-      for (let k = 0; k < pts; k++) {
-        const a = rot + (k / pts) * Math.PI * 2;
-        const r = size * (0.55 + rand() * 0.45);
-        path.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.75]);
-      }
-      g.fillStyle = 'rgba(0, 0, 0, 0.35)';
-      g.beginPath();
-      path.forEach(([px, py], k) => (k ? g.lineTo(px + 1.5, py + 2) : g.moveTo(px + 1.5, py + 2)));
-      g.fill();
-      g.fillStyle = col;
-      g.beginPath();
-      path.forEach(([px, py], k) => (k ? g.lineTo(px, py) : g.moveTo(px, py)));
-      g.closePath();
-      g.fill();
-      // Lit top edge and a crack or brick mortar line.
-      g.strokeStyle = 'rgba(255, 235, 200, 0.18)';
-      g.lineWidth = 1;
-      g.beginPath();
-      g.moveTo(path[0][0], path[0][1]);
-      g.lineTo(path[1][0], path[1][1]);
-      g.stroke();
-      if (rand() < 0.5) {
-        g.strokeStyle = 'rgba(0, 0, 0, 0.35)';
-        g.beginPath();
-        g.moveTo(cx - size * 0.4, cy + (rand() - 0.5) * size * 0.4);
-        g.lineTo(cx + size * 0.4, cy + (rand() - 0.5) * size * 0.4);
-        g.stroke();
-      }
-    };
+  // Soft drop shadow cast by the walls, rebuilt whenever a wall changes.
+  function buildShadowLayer(arena) {
+    const layer = document.createElement('canvas');
+    layer.width = arena.width;
+    layer.height = arena.height;
+    const g = layer.getContext('2d');
+    g.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    g.shadowBlur = 8;
+    g.shadowOffsetX = 5;
+    g.shadowOffsetY = 6;
+    g.fillStyle = '#000';
+    const c = arena.cell;
     for (let y = 0; y < arena.rows; y++) {
-      for (let x = 0; x < arena.cols; x++) {
-        if (!isWall(x, y) || isOuter(x, y)) continue;
-        const px = x * c;
-        const py = y * c;
-        g.fillStyle = '#2f2823';
-        g.fillRect(px + 2, py + 2, c - 4, c - 4);
-      }
+      for (let x = 0; x < arena.cols; x++) if (arena.walls[y][x] === 1) g.fillRect(x * c, y * c, c, c);
     }
-    // Fragments are placed inside wall cells but may poke out a little, giving jagged heap edges.
-    for (let y = 0; y < arena.rows; y++) {
-      for (let x = 0; x < arena.cols; x++) {
-        if (!isWall(x, y) || isOuter(x, y)) continue;
-        for (let k = 0; k < 9; k++) {
-          fragment(x * c + 3 + rand() * (c - 6), y * c + 3 + rand() * (c - 6), 4 + rand() * 6);
-        }
-        // Dust and grit on top.
-        for (let k = 0; k < 10; k++) {
-          g.fillStyle = rand() < 0.5 ? 'rgba(200, 180, 150, 0.25)' : 'rgba(0, 0, 0, 0.3)';
-          g.fillRect(x * c + rand() * c, y * c + rand() * c, 2, 2);
-        }
-      }
+    // Keep only the shadow, not the black blocks themselves (they sit under the wall layer anyway).
+    return layer;
+  }
+
+  // A brick block shot to pieces leaves broken bricks scattered on the ground.
+  function scatterRubble(arena, x, y) {
+    const g = state.fieldLayer.getContext('2d');
+    const c = arena.cell;
+    const rand = seededRandom(x * 31 + y * 977);
+    for (let k = 0; k < 16; k++) {
+      const rx = x * c + c / 2 + (rand() - 0.5) * c * 1.4;
+      const ry = y * c + c / 2 + (rand() - 0.5) * c * 1.4;
+      g.save();
+      g.translate(rx, ry);
+      g.rotate(rand() * Math.PI);
+      g.fillStyle = 'rgba(0,0,0,0.3)';
+      g.fillRect(-2, -1, 5, 3.5);
+      g.fillStyle = rand() < 0.75 ? BRICK_TONES[Math.floor(rand() * BRICK_TONES.length)] : MORTAR;
+      g.fillRect(-2.5, -1.5, 3 + rand() * 4, 2 + rand() * 2);
+      g.restore();
     }
+    const grad = g.createRadialGradient(x * c + c / 2, y * c + c / 2, 0, x * c + c / 2, y * c + c / 2, c);
+    grad.addColorStop(0, 'rgba(120, 95, 75, 0.35)');
+    grad.addColorStop(1, 'rgba(120, 95, 75, 0)');
+    g.fillStyle = grad;
+    g.fillRect(x * c - c / 2, y * c - c / 2, c * 2, c * 2);
+  }
+
+  function onWallHit(ev, now) {
+    const { arena } = state;
+    arena.wallHp[ev.cy][ev.cx] = ev.hp;
+    if (ev.hp <= 0) {
+      arena.walls[ev.cy][ev.cx] = 0;
+      scatterRubble(arena, ev.cx, ev.cy);
+      state.shadowLayer = buildShadowLayer(arena);
+      const c = arena.cell;
+      state.blasts.push({ x: (ev.cx + 0.5) * c, y: (ev.cy + 0.5) * c, start: now, kind: 'collapse' });
+      playSound('collapse', (ev.cx + 0.5) * c, (ev.cy + 0.5) * c);
+    }
+    paintWallCell(state.wallLayer.getContext('2d'), arena, ev.cx, ev.cy);
   }
 
   function buildFieldLayer(arena) {
@@ -768,9 +1072,7 @@
     layer.width = arena.width;
     layer.height = arena.height;
     const g = layer.getContext('2d');
-    const rand = seededRandom(19771977);
-    paintGround(g, arena, rand);
-    paintWalls(g, arena, rand);
+    paintGround(g, arena, seededRandom(19771977));
     return layer;
   }
 
@@ -811,6 +1113,8 @@
     state.ticksLeft = payload.ticksLeft;
     state.winScore = payload.winScore;
     state.fieldLayer = buildFieldLayer(payload.arena);
+    state.wallLayer = buildWallLayer(payload.arena);
+    state.shadowLayer = buildShadowLayer(payload.arena);
     canvas.width = payload.arena.width;
     canvas.height = payload.arena.height;
     document.querySelectorAll('.hud').forEach((hud) => { hud.style.maxWidth = `${canvas.width}px`; });
@@ -860,6 +1164,8 @@
         addScorch(ev.x, ev.y, true);
         playSound('explosion', ev.x, ev.y, ev.id === state.playerId ? 1.4 : 1);
         if (ev.hadFlag) playSound(ev.id === state.playerId ? 'flagLost' : 'flagRespawn');
+      } else if (ev.type === 'wallHit') {
+        onWallHit(ev, now);
       } else if (ev.type === 'impact') {
         state.blasts.push({ x: ev.x, y: ev.y, start: now, kind: 'impact' });
         addScorch(ev.x, ev.y, false);
@@ -952,7 +1258,7 @@
     ctx.fillText(p.name, x + w / 2, y + h / 2 + 1);
   }
 
-  const BLAST_MS = { muzzle: 120, impact: 350, explosion: 1100 };
+  const BLAST_MS = { muzzle: 120, impact: 350, explosion: 1100, collapse: 900 };
 
   // Smoke pours out of a tank after it's hit and keeps trailing while it spins out.
   const SMOKE_MS = 1400;
@@ -998,6 +1304,18 @@
         ctx.beginPath();
         ctx.arc(b.x, b.y, 7 * (1 - t * 0.5), 0, Math.PI * 2);
         ctx.fill();
+      } else if (b.kind === 'collapse') {
+        if (!b.bits) b.bits = Array.from({ length: 12 }, () => ({ a: Math.random() * Math.PI * 2, v: 20 + Math.random() * 40, s: 2 + Math.random() * 3 }));
+        ctx.globalAlpha = 0.55 * (1 - t);
+        ctx.fillStyle = '#8a6a55';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y - 8 * t, 14 + 22 * t, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1 - t;
+        b.bits.forEach((d) => {
+          ctx.fillStyle = '#a8432f';
+          ctx.fillRect(b.x + Math.cos(d.a) * d.v * t, b.y + Math.sin(d.a) * d.v * t, d.s, d.s * 0.6);
+        });
       } else if (b.kind === 'impact') {
         // Dust puff and a few sparks.
         ctx.globalAlpha = 0.6 * (1 - t);
@@ -1109,6 +1427,8 @@
 
     const alpha = Math.min(1, (now - state.lastSnapshotAt) / state.tickMs);
     ctx.drawImage(state.fieldLayer, 0, 0);
+    ctx.drawImage(state.shadowLayer, 0, 0);
+    ctx.drawImage(state.wallLayer, 0, 0);
     drawTimer();
 
     state.currBullets.forEach((b) => {
@@ -1168,6 +1488,20 @@
     drawBlasts(now);
     // Bubbles go on top so a tank never covers another player's name.
     positions.forEach(([p, x, y]) => drawNameBubble(p, x, y - (p.hasFlag ? 30 : 16)));
+  }
+
+  // Debug aid: ?debug exposes onWallHit so wall damage can be previewed from the console.
+  if (new URLSearchParams(location.search).has('debug')) window.__tankmatesDebug = { onWallHit, state };
+
+  // Debug aid: ?showcase draws all four tank designs large on the lobby screen.
+  if (new URLSearchParams(location.search).has('showcase')) {
+    const sc = document.createElement('canvas');
+    sc.width = 640;
+    sc.height = 240;
+    sc.style.cssText = 'display:block;margin:0 auto 16px;background:#3d4a24;border-radius:8px';
+    document.querySelector('header').after(sc);
+    const g = sc.getContext('2d');
+    ['#cf5353', '#8286ff', '#fafd00', '#ae66de'].forEach((color, i) => drawTank(g, { number: i + 1, color }, 90 + i * 155, 125, -90, 3));
   }
 
   buildSlots();
