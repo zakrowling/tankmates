@@ -256,8 +256,8 @@
   // for crisp detail, then rotated to the tank's heading. The hull centre is the pivot.
   const SPRITE_W = 36;
   const SPRITE_H = 54;
-  const PIVOT = { x: 18, y: 30 };
-  const RES = 3;
+  const PIVOT = { x: 18, y: 32 };
+  const RES = 2; // drawn at 2 pixels per game pixel, then pixel-art post-processed (see pixelate)
   const spriteCache = new Map();
 
   // Mixes a #rrggbb colour towards black (amt < 0) or white (amt > 0).
@@ -269,12 +269,13 @@
     return `rgb(${mix(n >> 16)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`;
   }
 
-  // Four tank designs, one per player slot, each in its own paint scheme.
+  // Four tank designs, one per player slot, inspired by real top-down tank silhouettes.
   const TANK_DESIGNS = [
-    { name: 'Main battle tank', paint: '#b49b68', draw: drawMBT },
-    { name: 'Heavy tank', paint: '#62655b', draw: drawHeavy },
-    { name: 'Medium tank', paint: '#5d6537', draw: drawMedium },
-    { name: 'Modern tank', paint: '#4b5c3b', draw: drawModern },
+    // ramp: colours the finished sprite is reduced to (each also gets darker/lighter shades).
+    { name: 'Leopard 2A7 style', draw: drawLeopard, ramp: ['#4c5b34', '#2b2a22', '#5c4a30', '#3a4a2a'] }, // green camo
+    { name: 'M1A2 Abrams style', draw: drawAbrams, ramp: ['#c2a878', '#a8915f', '#5a5246'] }, // desert sand
+    { name: 'T-14 Armata style', draw: drawArmata, ramp: ['#a3a9ad', '#3d4246'] }, // silver
+    { name: 'AbramsX style', draw: drawAbramsX, ramp: ['#66727f', '#3b434b'] }, // blue-grey
   ];
 
   function poly(g, pts) {
@@ -283,254 +284,288 @@
     g.closePath();
   }
 
-  // Fill a shape lit from the top-left, with a dark outline.
-  function solid(g, build, base, { light = 0.25, dark = -0.35, x0 = 0, x1 = SPRITE_W, outline = -0.6, lw = 0.8 } = {}) {
+  // Paints a body panel: base colour, optional camo blotches, top-left lighting and a dark outline.
+  function paintBody(g, build, base, { camo = null, seed = 1, blobs = 7, blobSize = 6, outline = -0.62 } = {}) {
+    g.save();
     build();
-    const grad = g.createLinearGradient(x0, 0, x1, 0);
-    grad.addColorStop(0, shade(base, light));
-    grad.addColorStop(0.45, base);
-    grad.addColorStop(1, shade(base, dark));
-    g.fillStyle = grad;
+    g.fillStyle = base;
     g.fill();
+    g.clip();
+    if (camo) {
+      const rand = seededRandom(seed);
+      for (let i = 0; i < blobs; i++) {
+        const cx = rand() * SPRITE_W;
+        const cy = 8 + rand() * (SPRITE_H - 8);
+        const pts = [];
+        for (let k = 0; k < 7; k++) {
+          const a = (k / 7) * Math.PI * 2;
+          const r = blobSize * (0.5 + rand() * 0.7);
+          pts.push([cx + Math.cos(a) * r * 1.3, cy + Math.sin(a) * r]);
+        }
+        g.fillStyle = camo[i % camo.length];
+        poly(g, pts);
+        g.fill();
+      }
+    }
+    const light = g.createLinearGradient(0, 8, SPRITE_W, SPRITE_H);
+    light.addColorStop(0, 'rgba(255, 255, 255, 0.22)');
+    light.addColorStop(0.45, 'rgba(255, 255, 255, 0)');
+    light.addColorStop(1, 'rgba(0, 0, 0, 0.32)');
+    g.fillStyle = light;
+    g.fillRect(0, 0, SPRITE_W, SPRITE_H);
+    g.restore();
+    build();
     g.strokeStyle = shade(base, outline);
-    g.lineWidth = lw;
+    g.lineWidth = 0.7;
     g.stroke();
   }
 
   function tracks(g, x, y, w, h, base) {
     for (const tx of [x, SPRITE_W - x - w]) {
-      g.fillStyle = shade(base, -0.75);
-      roundRect(g, tx, y, w, h, 2);
+      g.fillStyle = shade(base, -0.78);
+      roundRect(g, tx, y, w, h, 1.5);
       g.fill();
-      // Track links.
-      g.fillStyle = shade(base, -0.55);
-      for (let ty = y + 1; ty < y + h - 1; ty += 2.2) g.fillRect(tx + 0.6, ty, w - 1.2, 1.1);
-      g.fillStyle = 'rgba(255, 255, 255, 0.08)';
-      g.fillRect(tx + 0.6, y + 1, 0.8, h - 2);
+      g.fillStyle = shade(base, -0.6);
+      for (let ty = y + 0.8; ty < y + h - 0.8; ty += 1.8) g.fillRect(tx + 0.5, ty, w - 1, 0.9);
     }
   }
 
-  function barrel(g, x, y0, y1, w, base) {
-    solid(g, () => { g.beginPath(); g.rect(x - w / 2, y0, w, y1 - y0); }, base, { x0: x - w / 2, x1: x + w / 2, light: 0.35, dark: -0.4 });
-  }
-
-  function hatch(g, x, y, r, base) {
-    g.beginPath();
-    g.arc(x, y, r, 0, Math.PI * 2);
-    g.fillStyle = shade(base, -0.15);
-    g.fill();
-    g.strokeStyle = shade(base, -0.6);
-    g.lineWidth = 0.6;
-    g.stroke();
-    g.beginPath();
-    g.arc(x - r * 0.25, y - r * 0.25, r * 0.45, 0, Math.PI * 2);
-    g.fillStyle = shade(base, 0.2);
-    g.fill();
-  }
-
-  function panelLine(g, x0, y0, x1, y1, base) {
-    g.strokeStyle = shade(base, -0.45);
-    g.lineWidth = 0.5;
+  function line(g, x0, y0, x1, y1, color, w = 0.5) {
+    g.strokeStyle = color;
+    g.lineWidth = w;
     g.beginPath();
     g.moveTo(x0, y0);
     g.lineTo(x1, y1);
     g.stroke();
   }
 
-  // Team markings: a coloured stripe across the turret and a star on the hull.
-  function teamStripe(g, build, team) {
+  function barrel(g, x, y0, y1, w, base) {
+    const grad = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+    grad.addColorStop(0, shade(base, 0.3));
+    grad.addColorStop(0.5, base);
+    grad.addColorStop(1, shade(base, -0.45));
+    g.fillStyle = grad;
+    g.fillRect(x - w / 2, y0, w, y1 - y0);
+    g.strokeStyle = shade(base, -0.65);
+    g.lineWidth = 0.5;
+    g.strokeRect(x - w / 2, y0, w, y1 - y0);
+  }
+
+  function hatch(g, x, y, r, base) {
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fillStyle = shade(base, -0.12);
+    g.fill();
+    g.strokeStyle = shade(base, -0.6);
+    g.lineWidth = 0.5;
+    g.stroke();
+    g.beginPath();
+    g.arc(x - r * 0.3, y - r * 0.3, r * 0.4, 0, Math.PI * 2);
+    g.fillStyle = shade(base, 0.25);
+    g.fill();
+  }
+
+  function box(g, x, y, w, h, base) {
+    g.fillStyle = base;
+    g.fillRect(x, y, w, h);
+    g.fillStyle = 'rgba(255,255,255,0.18)';
+    g.fillRect(x, y, w, 0.5);
+    g.strokeStyle = shade(base, -0.6);
+    g.lineWidth = 0.4;
+    g.strokeRect(x, y, w, h);
+  }
+
+  function engineDeck(g, x0, x1, y0, y1, base) {
+    g.fillStyle = shade(base, -0.35);
+    g.fillRect(x0, y0, x1 - x0, y1 - y0);
+    for (let x = x0 + 1; x < x1; x += 1.6) line(g, x, y0 + 0.5, x, y1 - 0.5, shade(base, -0.6), 0.5);
+  }
+
+  // Team markings: a coloured band on the turret bustle and a small chevron on the hull rear.
+  function teamBand(g, build, team) {
     g.save();
     build();
     g.clip();
     g.fillStyle = team;
-    g.globalAlpha = 0.9;
+    g.globalAlpha = 0.92;
     g.fillRect(0, 0, SPRITE_W, SPRITE_H);
     g.restore();
   }
 
-  function star(g, x, y, r, color) {
+  function chevron(g, x, y, team) {
+    g.strokeStyle = team;
+    g.lineWidth = 1.1;
     g.beginPath();
-    for (let i = 0; i < 10; i++) {
-      const a = -Math.PI / 2 + (i * Math.PI) / 5;
-      const rr = i % 2 ? r * 0.45 : r;
-      g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
-    }
-    g.closePath();
-    g.fillStyle = color;
-    g.fill();
-  }
-
-  // P1: angular modern main battle tank with side skirts and a long smoothbore gun.
-  function drawMBT(g, paint, team) {
-    tracks(g, 3, 12, 7, 38, paint);
-    solid(g, () => poly(g, [[8, 13], [28, 13], [30, 16], [30, 49], [6, 49], [6, 16]]), paint);
-    // Side skirts.
-    for (const x of [3, 26]) {
-      solid(g, () => { g.beginPath(); g.rect(x, 15, 7, 30); }, shade(paint, -0.05), { x0: x, x1: x + 7 });
-      for (let y = 20; y < 45; y += 6) panelLine(g, x, y, x + 7, y, paint);
-    }
-    panelLine(g, 9, 44, 27, 44, paint);
-    for (let x = 11; x <= 25; x += 2.5) panelLine(g, x, 45, x, 48.5, paint);
-    star(g, 18, 46.5, 2, team);
-    // Turret with bustle rack.
-    g.fillStyle = shade(paint, -0.5);
-    g.fillRect(9, 39, 18, 4);
-    for (let x = 10; x <= 26; x += 2) panelLine(g, x, 39, x, 43, paint);
-    const turret = () => poly(g, [[9, 21], [27, 21], [30, 27], [29, 39], [7, 39], [6, 27]]);
-    solid(g, turret, shade(paint, 0.05), { x0: 6, x1: 30 });
-    teamStripe(g, () => { g.beginPath(); g.rect(6, 35, 24, 3); }, team);
-    panelLine(g, 9, 21, 7, 27, paint);
-    panelLine(g, 27, 21, 29, 27, paint);
-    g.fillStyle = shade(paint, -0.4);
-    g.fillRect(10, 23, 4, 3); // gunner's sight
-    hatch(g, 23.5, 31, 2.6, paint);
-    hatch(g, 12.5, 32, 2.2, paint);
-    barrel(g, 18, 1, 22, 2.6, shade(paint, -0.05));
-    g.fillStyle = shade(paint, -0.45);
-    g.fillRect(16.4, 9, 3.2, 3); // bore evacuator
-    g.fillRect(16.6, 1, 2.8, 1);
-  }
-
-  // P2: boxy WWII heavy tank with wide exposed tracks, square turret and muzzle brake.
-  function drawHeavy(g, paint, team) {
-    tracks(g, 2, 11, 8, 41, paint);
-    solid(g, () => { g.beginPath(); g.rect(6, 12, 24, 39); }, paint, { x0: 6, x1: 30 });
-    // Spare track links on the glacis and tow cables down the sides.
-    for (let x = 9; x <= 25; x += 4) {
-      g.fillStyle = shade(paint, -0.55);
-      g.fillRect(x, 13.5, 3, 2.2);
-    }
-    g.strokeStyle = shade(paint, -0.5);
-    g.lineWidth = 0.7;
-    for (const x of [7.5, 28.5]) {
-      g.beginPath();
-      g.moveTo(x, 18);
-      for (let y = 18; y < 48; y += 3) g.lineTo(x + (y % 6 ? 0.6 : -0.6), y);
-      g.stroke();
-    }
-    g.fillStyle = shade(paint, -0.4);
-    g.fillRect(11, 45, 14, 4); // engine deck grille
-    for (let x = 12; x < 25; x += 2) panelLine(g, x, 45, x, 49, shade(paint, 0.3));
-    star(g, 9.5, 47, 1.8, team);
-    // Square turret with rounded corners.
-    const turret = () => roundRect(g, 9, 20, 18, 19, 3);
-    solid(g, turret, shade(paint, 0.04), { x0: 9, x1: 27 });
-    teamStripe(g, () => { g.beginPath(); g.rect(9, 33, 18, 3); }, team);
-    g.fillStyle = shade(paint, -0.45);
-    g.fillRect(14, 18, 8, 3); // gun mantlet
-    hatch(g, 22.5, 26, 2.6, paint);
-    hatch(g, 13, 29, 2, paint);
-    barrel(g, 18, 3, 19, 3.6, paint);
-    // Muzzle brake.
-    solid(g, () => { g.beginPath(); g.rect(15.6, 0.5, 4.8, 3.5); }, shade(paint, -0.1), { x0: 15.6, x1: 20.4 });
-  }
-
-  // P3: WWII medium tank with a rounded cast turret, short gun and stowage.
-  function drawMedium(g, paint, team) {
-    tracks(g, 4, 13, 7, 37, paint);
-    solid(g, () => {
-      g.beginPath();
-      g.moveTo(9, 13);
-      g.lineTo(27, 13);
-      g.quadraticCurveTo(30, 13, 30, 17);
-      g.lineTo(30, 46);
-      g.quadraticCurveTo(30, 50, 26, 50);
-      g.lineTo(10, 50);
-      g.quadraticCurveTo(6, 50, 6, 46);
-      g.lineTo(6, 17);
-      g.quadraticCurveTo(6, 13, 9, 13);
-      g.closePath();
-    }, paint);
-    // Stowage: rolled tarp and ammo boxes on the rear deck.
-    solid(g, () => roundRect(g, 9, 43, 18, 3, 1.5), '#6b5a3a', { x0: 9, x1: 27 });
-    for (const x of [9, 22]) solid(g, () => { g.beginPath(); g.rect(x, 46.5, 5, 2.5); }, '#4e4a2c', { x0: x, x1: x + 5 });
-    hatch(g, 11.5, 17, 2, paint); // driver hatches
-    hatch(g, 24.5, 17, 2, paint);
-    star(g, 18, 18, 2.8, '#f2efe4');
-    // Rounded cast turret.
-    const turret = () => { g.beginPath(); g.ellipse(18, 31, 9.5, 9, 0, 0, Math.PI * 2); };
-    g.save();
-    turret();
-    const tg = g.createRadialGradient(15, 28, 1, 18, 31, 10);
-    tg.addColorStop(0, shade(paint, 0.35));
-    tg.addColorStop(0.6, paint);
-    tg.addColorStop(1, shade(paint, -0.35));
-    g.fillStyle = tg;
-    g.fill();
-    g.strokeStyle = shade(paint, -0.6);
-    g.lineWidth = 0.8;
+    g.moveTo(x - 2.2, y + 1.2);
+    g.lineTo(x, y - 0.8);
+    g.lineTo(x + 2.2, y + 1.2);
     g.stroke();
-    g.restore();
-    g.save();
-    g.beginPath();
-    g.ellipse(18, 31, 9.5, 9, 0, 0, Math.PI * 2);
-    g.clip();
-    teamStripe(g, () => { g.beginPath(); g.rect(8, 35, 20, 3); }, team);
-    g.restore();
-    hatch(g, 21.5, 30, 2.8, paint);
-    // Antenna.
-    g.strokeStyle = '#222';
-    g.lineWidth = 0.5;
-    g.beginPath();
-    g.moveTo(13, 35);
-    g.lineTo(9, 40);
-    g.stroke();
-    g.fillStyle = shade(paint, -0.4);
-    g.fillRect(15, 20.5, 6, 2.5); // mantlet
-    barrel(g, 18, 6, 21, 2.4, paint);
   }
 
-  // P4: modern tank with a low dome turret, reactive armour blocks, fume extractor and fuel drums.
-  function drawModern(g, paint, team) {
-    tracks(g, 3, 12, 7, 38, paint);
-    solid(g, () => poly(g, [[7, 12], [29, 12], [31, 15], [31, 47], [29, 50], [7, 50], [5, 47], [5, 15]]), paint);
-    for (const x of [3, 27]) solid(g, () => { g.beginPath(); g.rect(x, 14, 6, 33); }, shade(paint, -0.08), { x0: x, x1: x + 6 });
-    // External fuel drums on the rear.
-    for (const x of [12, 24]) {
-      solid(g, () => { g.beginPath(); g.ellipse(x, 50, 4, 2.6, 0, 0, Math.PI * 2); }, '#3f4a30', { x0: x - 4, x1: x + 4 });
-      panelLine(g, x - 2, 50, x + 2, 50, paint);
-    }
-    star(g, 9, 45, 1.8, team);
-    // Dome turret.
-    g.save();
+  // Green: Leopard 2A7 style. Long hull with full skirts, wedge-armour turret front, NATO camo.
+  function drawLeopard(g, team) {
+    const base = '#4c5b34';
+    const camo = ['#2b2a22', '#5c4a30', '#3a4a2a'];
+    tracks(g, 5, 12, 6, 41, base);
+    paintBody(g, () => poly(g, [[8, 12], [28, 12], [31, 15], [31, 52], [5, 52], [5, 15]]), base, { camo, seed: 11, blobs: 10 });
+    for (let y = 18; y < 48; y += 7) { line(g, 5, y, 9, y, shade(base, -0.55)); line(g, 27, y, 31, y, shade(base, -0.55)); }
+    engineDeck(g, 11, 25, 44, 50.5, base);
+    chevron(g, 18, 50, team);
+    hatch(g, 13, 15.5, 1.6, base); // driver
+    // Turret with arrowhead wedge armour either side of the gun.
+    const turret = () => poly(g, [[17, 18], [12, 17], [8, 24], [7, 37], [10, 41], [26, 41], [29, 37], [28, 24], [24, 17], [19, 18]]);
+    paintBody(g, turret, shade(base, 0.05), { camo, seed: 23, blobs: 6, blobSize: 5 });
+    line(g, 12, 17, 13, 24, shade(base, -0.6));
+    line(g, 24, 17, 23, 24, shade(base, -0.6));
+    line(g, 8, 24, 28, 24, shade(base, -0.5), 0.4);
+    teamBand(g, () => poly(g, [[8, 36], [28, 36], [28, 38.5], [8, 38.5]]), team);
+    box(g, 9.5, 25.5, 3.5, 3, '#2d2f28'); // commander's periscope
+    box(g, 22.5, 22.5, 3, 2.5, '#2d2f28'); // gunner's sight
+    hatch(g, 22.5, 31, 2.4, base);
+    hatch(g, 13.5, 32, 2.1, base);
+    barrel(g, 18, 0, 22, 2.4, '#3e4a2c');
+    for (const y of [5, 10, 15]) line(g, 16.8, y, 19.2, y, '#1f241a', 0.5); // thermal sleeve bands
+  }
+
+  // Sand: M1A2 Abrams style. Wide flat turret, bustle rack, CITV sight, commander's weapon station.
+  function drawAbrams(g, team) {
+    const base = '#c2a878';
+    tracks(g, 5, 12, 6, 41, base);
+    paintBody(g, () => poly(g, [[8, 12], [28, 12], [31, 15], [31, 52], [5, 52], [5, 15]]), base, { camo: ['#b39a6a', '#cdb586'], seed: 31, blobs: 8, blobSize: 7 });
+    for (let y = 17; y < 49; y += 5) { line(g, 5, y, 9, y, shade(base, -0.4)); line(g, 27, y, 31, y, shade(base, -0.4)); }
+    engineDeck(g, 11, 25, 45, 51, base);
+    chevron(g, 18, 50.5, team);
+    hatch(g, 18, 15, 1.6, base); // driver
+    // Bustle rack (cage) behind the turret.
+    g.strokeStyle = shade(base, -0.55);
+    g.lineWidth = 0.6;
+    g.strokeRect(7.5, 39, 21, 5);
+    for (let x = 9.5; x < 28; x += 2) line(g, x, 39, x, 44, shade(base, -0.45), 0.4);
+    const turret = () => poly(g, [[10, 20], [16.5, 20], [16.5, 22], [19.5, 22], [19.5, 20], [26, 20], [30, 26], [30, 39.5], [6, 39.5], [6, 26]]);
+    paintBody(g, turret, shade(base, 0.06), { camo: ['#b39a6a'], seed: 37, blobs: 4, blobSize: 6 });
+    line(g, 10, 20, 7.5, 26, shade(base, -0.5));
+    line(g, 26, 20, 28.5, 26, shade(base, -0.5));
+    teamBand(g, () => poly(g, [[6, 36.5], [30, 36.5], [30, 39], [6, 39]]), team);
+    // CITV sight (cylinder), loader's hatch, commander's cupola with remote weapon.
     g.beginPath();
-    g.ellipse(18, 31, 10.5, 10, 0, 0, Math.PI * 2);
-    const tg = g.createRadialGradient(14.5, 27.5, 1, 18, 31, 11);
-    tg.addColorStop(0, shade(paint, 0.35));
-    tg.addColorStop(0.6, paint);
-    tg.addColorStop(1, shade(paint, -0.4));
-    g.fillStyle = tg;
+    g.arc(11, 24.5, 1.8, 0, Math.PI * 2);
+    g.fillStyle = '#5a5246';
     g.fill();
-    g.strokeStyle = shade(paint, -0.6);
-    g.lineWidth = 0.8;
-    g.stroke();
-    g.restore();
-    // Reactive armour blocks around the turret front.
-    for (let i = -3; i <= 3; i++) {
-      if (i === 0) continue;
-      const a = -Math.PI / 2 + i * 0.32;
-      const bx = 18 + Math.cos(a) * 9;
-      const by = 31 + Math.sin(a) * 9;
-      g.save();
-      g.translate(bx, by);
-      g.rotate(a + Math.PI / 2);
-      solid(g, () => { g.beginPath(); g.rect(-1.6, -1.3, 3.2, 2.6); }, shade(paint, 0.08), { x0: -1.6, x1: 1.6 });
-      g.restore();
-    }
-    g.save();
+    hatch(g, 12, 31, 2.3, base);
+    hatch(g, 24, 30, 2.6, base);
+    box(g, 23, 25.5, 3, 2, '#5a5246');
+    line(g, 24.5, 25.5, 24.5, 22.5, '#3a352e', 0.7);
+    barrel(g, 18, 0, 21, 2.8, '#a8915f');
+    box(g, 16.3, 8, 3.4, 3, shade(base, -0.25)); // bore evacuator
+  }
+
+  // Silver: T-14 Armata style. Long flat hull, crew capsule up front, compact unmanned turret.
+  function drawArmata(g, team) {
+    const base = '#a3a9ad';
+    tracks(g, 5, 11, 6, 43, base);
+    paintBody(g, () => poly(g, [[8, 11], [28, 11], [31, 14], [31, 53], [5, 53], [5, 14]]), base, { camo: ['#b5bbbf', '#8e9498'], seed: 41, blobs: 6, blobSize: 8 });
+    for (let y = 16; y < 50; y += 4) { line(g, 5, y, 9, y, shade(base, -0.45)); line(g, 27, y, 31, y, shade(base, -0.45)); }
+    // Armoured crew capsule: three hatches across the front.
+    for (const x of [12.5, 18, 23.5]) hatch(g, x, 16, 1.5, base);
+    line(g, 9, 19.5, 27, 19.5, shade(base, -0.5));
+    // Long engine deck with slats.
+    engineDeck(g, 10, 26, 42, 51.5, base);
+    chevron(g, 18, 51, team);
+    const turret = () => poly(g, [[13, 23], [23, 23], [26, 27], [26, 39], [23, 41], [13, 41], [10, 39], [10, 27]]);
+    paintBody(g, turret, shade(base, 0.08), { camo: ['#8e9498'], seed: 47, blobs: 3, blobSize: 5 });
+    teamBand(g, () => poly(g, [[10, 37], [26, 37], [26, 39.5], [10, 39.5]]), team);
+    // Sensor blocks and the remote weapon station on top.
+    box(g, 11.5, 26, 3, 2.5, '#3d4246');
+    box(g, 21.5, 26, 3, 2.5, '#3d4246');
+    box(g, 16, 30, 4, 4, '#5f666b');
+    line(g, 18, 30, 18, 27, '#2e3236', 0.7);
+    for (const x of [11, 25]) { g.beginPath(); g.arc(x, 34, 1, 0, Math.PI * 2); g.fillStyle = '#2e3236'; g.fill(); }
+    barrel(g, 18, 0, 24, 2.6, '#8c9296');
+    box(g, 16.4, 10, 3.2, 3.5, shade(base, -0.3));
+  }
+
+  // Blue-grey: AbramsX style. Sleek hull, low angular turret, slim gun, remote weapon station.
+  function drawAbramsX(g, team) {
+    const base = '#66727f';
+    tracks(g, 5, 12, 6, 41, base);
+    paintBody(g, () => poly(g, [[9, 12], [27, 12], [31, 16], [31, 51], [28, 53], [8, 53], [5, 51], [5, 16]]), base, { camo: ['#5a6571', '#747f8b'], seed: 53, blobs: 8, blobSize: 6 });
+    for (let y = 18; y < 50; y += 8) { line(g, 5, y, 9, y, shade(base, -0.5)); line(g, 27, y, 31, y, shade(base, -0.5)); }
+    engineDeck(g, 11, 25, 45, 51, base);
+    chevron(g, 18, 50.5, team);
+    hatch(g, 18, 15.5, 1.5, base);
+    const turret = () => poly(g, [[11, 21], [25, 21], [29, 27], [28.5, 38], [25, 41], [11, 41], [7.5, 38], [7, 27]]);
+    paintBody(g, turret, shade(base, 0.06), { camo: ['#5a6571'], seed: 59, blobs: 4, blobSize: 5 });
+    line(g, 11, 21, 9, 27, shade(base, -0.55));
+    line(g, 25, 21, 27, 27, shade(base, -0.55));
+    line(g, 9, 27, 27, 27, shade(base, -0.45), 0.4);
+    teamBand(g, () => poly(g, [[8, 36], [28, 36], [28, 38.5], [8, 38.5]]), team);
+    // Remote weapon station and sensor mast.
+    box(g, 20.5, 29, 5, 4, '#3b434b');
+    line(g, 23, 29, 23, 25, '#2a3036', 0.7);
     g.beginPath();
-    g.ellipse(18, 31, 10.5, 10, 0, 0, Math.PI * 2);
-    g.clip();
-    teamStripe(g, () => { g.beginPath(); g.rect(7, 35.5, 22, 3); }, team);
-    g.restore();
-    hatch(g, 22.5, 31, 2.6, paint);
-    hatch(g, 13, 33, 2.2, paint);
-    g.fillStyle = '#20231c';
-    g.fillRect(11, 25, 3.5, 2.5); // IR searchlight
-    g.fillStyle = 'rgba(180, 60, 40, 0.8)';
-    g.fillRect(11.6, 25.5, 2.3, 1.4);
-    barrel(g, 18, 1, 22, 2.4, paint);
-    solid(g, () => { g.beginPath(); g.rect(16.1, 11, 3.8, 4); }, shade(paint, -0.1), { x0: 16.1, x1: 19.9 }); // fume extractor
+    g.arc(12.5, 31, 2, 0, Math.PI * 2);
+    g.fillStyle = '#3b434b';
+    g.fill();
+    box(g, 10, 24, 3, 2, '#2a3036');
+    barrel(g, 18, 0, 22, 2.2, '#57626d');
+  }
+
+  // Turns the smooth drawing into retro pixel art: hard alpha edges, a limited palette with
+  // a light ordered dither, and a 1px dark outline around the whole tank.
+  const BAYER = [[0, 2], [3, 1]];
+  function toRgb(col) {
+    const m = col.match(/\d+/g);
+    if (col.startsWith('#')) {
+      const n = parseInt(col.slice(1), 16);
+      return [n >> 16, (n >> 8) & 255, n & 255];
+    }
+    return m.slice(0, 3).map(Number);
+  }
+
+  function pixelate(canvas, ramp, team) {
+    const g = canvas.getContext('2d');
+    const { width: w, height: h } = canvas;
+    const img = g.getImageData(0, 0, w, h);
+    const d = img.data;
+    const palette = [];
+    for (const col of [...ramp, team]) {
+      for (const amt of [-0.6, -0.4, -0.22, 0, 0.2, 0.4]) palette.push(toRgb(shade(col, amt)));
+    }
+    palette.push([20, 20, 16], [235, 230, 215]);
+    const nearest = (r, gr, b) => {
+      let best = palette[0];
+      let bestD = Infinity;
+      for (const p of palette) {
+        const dd = (p[0] - r) ** 2 * 0.3 + (p[1] - gr) ** 2 * 0.59 + (p[2] - b) ** 2 * 0.11;
+        if (dd < bestD) { bestD = dd; best = p; }
+      }
+      return best;
+    };
+    const solid = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (d[i + 3] < 110) { d[i + 3] = 0; continue; }
+        solid[y * w + x] = 1;
+        const bias = (BAYER[y % 2][x % 2] - 1.5) * 2.5;
+        const [r, gr, b] = nearest(d[i] + bias, d[i + 1] + bias, d[i + 2] + bias);
+        d[i] = r; d[i + 1] = gr; d[i + 2] = b; d[i + 3] = 255;
+      }
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (solid[y * w + x]) continue;
+        const touches = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+          const nx = x + dx;
+          const ny = y + dy;
+          return nx >= 0 && ny >= 0 && nx < w && ny < h && solid[ny * w + nx];
+        });
+        if (!touches) continue;
+        const i = (y * w + x) * 4;
+        d[i] = 18; d[i + 1] = 17; d[i + 2] = 14; d[i + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
   }
 
   function buildTankSprite(number, team) {
@@ -541,7 +576,8 @@
     g.scale(RES, RES);
     g.lineJoin = 'round';
     const design = TANK_DESIGNS[(number - 1) % TANK_DESIGNS.length];
-    design.draw(g, design.paint, team);
+    design.draw(g, team);
+    pixelate(c, design.ramp, team);
     return c;
   }
 
@@ -561,8 +597,9 @@
     // Ground shadow.
     c.fillStyle = 'rgba(0, 0, 0, 0.35)';
     c.beginPath();
-    c.ellipse(2, 3, 17, 21, 0, 0, Math.PI * 2);
+    c.ellipse(2, 3, 14, 22, 0, 0, Math.PI * 2);
     c.fill();
+    c.imageSmoothingEnabled = false; // keep the pixel art crisp when rotated and scaled
     c.drawImage(sprite, -PIVOT.x, -PIVOT.y, SPRITE_W, SPRITE_H);
     c.restore();
   }
