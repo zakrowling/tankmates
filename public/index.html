@@ -102,7 +102,13 @@
     #game-view { zoom: 0.9; display: none; flex-direction: column; align-items: center; position: relative; }
     /* Score panels sit at the corner matching each player's spawn: P1 TL, P2 TR, P3 BL, P4 BR. */
     .hud { display: flex; justify-content: space-between; width: 100%; }
-    .hud.top { margin-bottom: 6px; }
+    .hud.top { margin-bottom: 6px; position: relative; }
+    /* Countdown: centred above the arena, between the top two players, same size as their scores. */
+    #timer {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      font-size: 10px; color: #fff;
+    }
+    #timer.low { color: #ff5555; }
     .hud.bottom { margin-top: 6px; }
     .score-tag {
       padding: 4px 10px; border-radius: 6px; background: #12160c; border: 2px solid currentColor;
@@ -170,6 +176,7 @@
   <div id="game-view">
     <div class="hud top">
       <div class="score-tag empty" data-slot="1"></div>
+      <div id="timer"></div>
       <div class="score-tag right empty" data-slot="2"></div>
     </div>
     <div class="arena-wrap"><canvas id="game-canvas" width="960" height="576"></canvas></div>

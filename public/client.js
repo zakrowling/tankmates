@@ -1526,11 +1526,9 @@
   function drawTimer() {
     const secs = Math.max(0, Math.ceil(state.ticksLeft * state.tickMs / 1000));
     const text = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-    ctx.font = '8px "Press Start 2P", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = secs <= 10 ? '#ff5555' : '#f5e6c8';
-    ctx.fillText(text, canvas.width / 2, state.arena.cell / 4 + 1);
+    const el = $('timer');
+    if (el.textContent !== text) el.textContent = text;
+    el.classList.toggle('low', secs <= 10);
   }
 
   // The host runs the game; everyone else interpolates between the last two snapshots.
