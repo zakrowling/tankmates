@@ -1346,7 +1346,7 @@
   }
 
   function drawNameBubble(p, cx, top) {
-    ctx.font = '600 10px Geist, sans-serif';
+    ctx.font = '10px "Geist Pixel", monospace';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
     const w = ctx.measureText(p.name).width + 14;

@@ -7,14 +7,14 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cg fill=%22%23cf5353%22%3E%3Crect x=%222%22 y=%223%22 width=%2222%22 height=%226%22/%3E%3Crect x=%222%22 y=%2223%22 width=%2222%22 height=%226%22/%3E%3Crect x=%228%22 y=%229%22 width=%2214%22 height=%2214%22/%3E%3Crect x=%2215%22 y=%2214%22 width=%2216%22 height=%224%22/%3E%3C/g%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: #0b0d08;
       color: #fff;
-      font-family: 'Geist', system-ui, -apple-system, sans-serif;
-      font-weight: 500;
+      font-family: 'Geist Pixel', 'Courier New', monospace;
+      font-synthesis: none;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -49,7 +49,7 @@
     }
     .btn {
       background: #ffe600; color: #000; border: none; padding: 12px 20px;
-      font-family: inherit; font-weight: 700; font-size: 15px; border-radius: 6px; cursor: pointer;
+      font-family: inherit; font-size: 15px; border-radius: 6px; cursor: pointer;
       width: 100%; margin-top: 10px;
     }
     .btn:hover { filter: brightness(1.1); }
@@ -109,7 +109,7 @@
     }
     .hud-group { display: flex; gap: 10px; }
     .hud-group.right { justify-content: flex-end; }
-    #timer { font-size: 14px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+    #timer { font-size: 14px; color: #fff; font-variant-numeric: tabular-nums; }
     #timer.low { color: #ff5555; }
     .score-tag {
       padding: 4px 10px; border-radius: 6px; background: #12160c; border: 2px solid currentColor;
@@ -117,8 +117,8 @@
     }
     .score-tag.right { flex-direction: row-reverse; }
     .score-tag.empty { visibility: hidden; }
-    .score-tag .tag-name { font-size: 11px; font-weight: 600; }
-    .score-tag .tag-score { font-size: 14px; font-weight: 700; color: #fff; }
+    .score-tag .tag-name { font-size: 11px; }
+    .score-tag .tag-score { font-size: 14px; color: #fff; }
     .score-tag .tag-flag { font-size: 14px; color: #ffd740; font-family: sans-serif; visibility: hidden; }
     canvas { background: #000; border-radius: 6px; image-rendering: pixelated; }
     /* The arena is wider than most game boards; shrink it to fit smaller screens. */
