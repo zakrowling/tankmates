@@ -222,11 +222,6 @@
     flagRespawn(ac, out) {
       osc(ac, out, { type: 'triangle', from: 880, to: 1320, t0: ac.currentTime, dur: 0.25, peak: 0.08 });
     },
-    // Military bugle-style call to start.
-    start(ac, out) {
-      const t = ac.currentTime;
-      [392, 523, 659, 784, 659, 784].forEach((f, i) => osc(ac, out, { type: 'square', from: f, t0: t + i * 0.13, dur: 0.12, peak: 0.07 }));
-    },
     // Countdown tick for the last 10 seconds: a sharp, loud clock tick (higher on the final 3).
     tick(ac, out, secs) {
       const t = ac.currentTime;
@@ -1272,7 +1267,6 @@
     $('game-view').style.display = 'flex';
     document.body.classList.add('in-game');
     updateScoreboard(payload.players);
-    playSound('start');
     const { GAME_SECONDS } = window.TankmatesEngine;
     music.start(() => Math.max(0, GAME_SECONDS - (state.ticksLeft * state.tickMs) / 1000));
 
