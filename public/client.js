@@ -661,41 +661,9 @@
         }
       }
     }
-
-    // Shell craters: dark pit, scorched ring and a lit rim.
-    // Keep craters off the corner spawns and the flag's starting spot.
-    const keepClear = [...[[60, 60], [w - 60, 60], [60, h - 60], [w - 60, h - 60]], [w / 2, h / 2]];
-    for (let i = 0; i < 22; i++) {
-      const x = rand() * w;
-      const y = rand() * h;
-      const r = 8 + rand() * 16;
-      if (keepClear.some(([kx, ky]) => Math.hypot(kx - x, ky - y) < 70)) continue;
-      paintCrater(g, x, y, r);
-    }
   }
 
-  function paintCrater(g, x, y, r) {
-    const scorch = g.createRadialGradient(x, y, r * 0.5, x, y, r * 2.2);
-    scorch.addColorStop(0, 'rgba(20, 16, 10, 0.55)');
-    scorch.addColorStop(1, 'rgba(20, 16, 10, 0)');
-    g.fillStyle = scorch;
-    g.beginPath();
-    g.arc(x, y, r * 2.2, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = 'rgba(140, 115, 75, 0.55)';
-    g.beginPath();
-    g.ellipse(x + r * 0.15, y + r * 0.15, r, r * 0.85, 0, 0, Math.PI * 2);
-    g.fill();
-    const pit = g.createRadialGradient(x - r * 0.2, y - r * 0.2, 0, x, y, r);
-    pit.addColorStop(0, '#1b150c');
-    pit.addColorStop(1, '#3e3220');
-    g.fillStyle = pit;
-    g.beginPath();
-    g.ellipse(x, y, r * 0.85, r * 0.72, 0, 0, Math.PI * 2);
-    g.fill();
-  }
-
-  // Sandbag bunkers: staggered rows of rounded, shaded bags. The outer wall is reinforced concrete.
+  // Rubble heaps of broken brick and concrete; the outer wall is reinforced concrete.
   function paintWalls(g, arena, rand) {
     const c = arena.cell;
     const isWall = (x, y) => arena.walls[y] && arena.walls[y][x] === 1;
@@ -734,36 +702,65 @@
     g.fillRect(c, c, arena.width - 2 * c, 3);
     g.fillRect(c, c, 3, arena.height - 2 * c);
 
-    // Sandbags on interior walls.
-    const bagH = c / 2;
-    const bagW = c * 0.75;
-    g.save();
-    g.beginPath();
+    // Rubble on interior walls: heaps of broken brick, concrete chunks and charred debris.
+    const RUBBLE = ['#8a3b2a', '#9c4a35', '#7a3426', '#a35a40', '#7d7a72', '#6b675f', '#8f8a7e', '#4a3a30', '#3b302a'];
+    const fragment = (cx, cy, size) => {
+      const pts = 5 + Math.floor(rand() * 3);
+      const rot = rand() * Math.PI;
+      const col = RUBBLE[Math.floor(rand() * RUBBLE.length)];
+      const path = [];
+      for (let k = 0; k < pts; k++) {
+        const a = rot + (k / pts) * Math.PI * 2;
+        const r = size * (0.55 + rand() * 0.45);
+        path.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.75]);
+      }
+      g.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      g.beginPath();
+      path.forEach(([px, py], k) => (k ? g.lineTo(px + 1.5, py + 2) : g.moveTo(px + 1.5, py + 2)));
+      g.fill();
+      g.fillStyle = col;
+      g.beginPath();
+      path.forEach(([px, py], k) => (k ? g.lineTo(px, py) : g.moveTo(px, py)));
+      g.closePath();
+      g.fill();
+      // Lit top edge and a crack or brick mortar line.
+      g.strokeStyle = 'rgba(255, 235, 200, 0.18)';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(path[0][0], path[0][1]);
+      g.lineTo(path[1][0], path[1][1]);
+      g.stroke();
+      if (rand() < 0.5) {
+        g.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+        g.beginPath();
+        g.moveTo(cx - size * 0.4, cy + (rand() - 0.5) * size * 0.4);
+        g.lineTo(cx + size * 0.4, cy + (rand() - 0.5) * size * 0.4);
+        g.stroke();
+      }
+    };
     for (let y = 0; y < arena.rows; y++) {
-      for (let x = 0; x < arena.cols; x++) if (isWall(x, y) && !isOuter(x, y)) g.rect(x * c, y * c, c, c);
-    }
-    g.clip();
-    g.fillStyle = '#4a3f2a';
-    g.fillRect(0, 0, arena.width, arena.height);
-    for (let row = 0; row * bagH < arena.height; row++) {
-      const offset = row % 2 ? bagW / 2 : 0;
-      for (let col = -1; col * bagW < arena.width; col++) {
-        const bx = col * bagW + offset + 1;
-        const by = row * bagH + 1;
-        const tone = 150 + Math.floor(rand() * 30);
-        const grad = g.createLinearGradient(bx, by, bx, by + bagH);
-        grad.addColorStop(0, `rgb(${tone + 30}, ${tone + 12}, ${tone - 40})`);
-        grad.addColorStop(0.6, `rgb(${tone}, ${tone - 20}, ${tone - 70})`);
-        grad.addColorStop(1, `rgb(${tone - 60}, ${tone - 75}, ${tone - 105})`);
-        g.fillStyle = grad;
-        roundRect(g, bx, by, bagW - 2, bagH - 2, 4);
-        g.fill();
-        // Tie seam on each bag.
-        g.fillStyle = 'rgba(60, 45, 25, 0.5)';
-        g.fillRect(bx + bagW * 0.45, by + 2, 1, bagH - 6);
+      for (let x = 0; x < arena.cols; x++) {
+        if (!isWall(x, y) || isOuter(x, y)) continue;
+        const px = x * c;
+        const py = y * c;
+        g.fillStyle = '#2f2823';
+        g.fillRect(px + 2, py + 2, c - 4, c - 4);
       }
     }
-    g.restore();
+    // Fragments are placed inside wall cells but may poke out a little, giving jagged heap edges.
+    for (let y = 0; y < arena.rows; y++) {
+      for (let x = 0; x < arena.cols; x++) {
+        if (!isWall(x, y) || isOuter(x, y)) continue;
+        for (let k = 0; k < 9; k++) {
+          fragment(x * c + 3 + rand() * (c - 6), y * c + 3 + rand() * (c - 6), 4 + rand() * 6);
+        }
+        // Dust and grit on top.
+        for (let k = 0; k < 10; k++) {
+          g.fillStyle = rand() < 0.5 ? 'rgba(200, 180, 150, 0.25)' : 'rgba(0, 0, 0, 0.3)';
+          g.fillRect(x * c + rand() * c, y * c + rand() * c, 2, 2);
+        }
+      }
+    }
   }
 
   function buildFieldLayer(arena) {
@@ -781,17 +778,14 @@
   function addScorch(x, y, big) {
     if (!state.fieldLayer) return;
     const g = state.fieldLayer.getContext('2d');
-    if (big) {
-      paintCrater(g, x, y, 10 + Math.random() * 4);
-    } else {
-      const grad = g.createRadialGradient(x, y, 0, x, y, 9);
-      grad.addColorStop(0, 'rgba(15, 12, 8, 0.6)');
-      grad.addColorStop(1, 'rgba(15, 12, 8, 0)');
-      g.fillStyle = grad;
-      g.beginPath();
-      g.arc(x, y, 9, 0, Math.PI * 2);
-      g.fill();
-    }
+    const r = big ? 26 : 9;
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(15, 12, 8, ${big ? 0.5 : 0.55})`);
+    grad.addColorStop(1, 'rgba(15, 12, 8, 0)');
+    g.fillStyle = grad;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
   }
 
   // One panel per spawn corner; a player's panel is chosen by their player number.
@@ -829,6 +823,7 @@
     state.prevBullets = bullets;
     state.currBullets = bullets;
     state.blasts = [];
+    smoke = [];
     state.flag = payload.flag;
     state.lastSnapshotAt = performance.now();
     state.playing = true;
@@ -861,6 +856,7 @@
         state.blasts.push({ x: ev.x, y: ev.y, start: now, kind: 'muzzle' });
       } else if (ev.type === 'hit') {
         state.blasts.push({ x: ev.x, y: ev.y, start: now, kind: 'explosion' });
+        for (let i = 0; i < 10; i++) emitSmoke(ev.x, ev.y, now, true);
         addScorch(ev.x, ev.y, true);
         playSound('explosion', ev.x, ev.y, ev.id === state.playerId ? 1.4 : 1);
         if (ev.hadFlag) playSound(ev.id === state.playerId ? 'flagLost' : 'flagRespawn');
@@ -957,6 +953,37 @@
   }
 
   const BLAST_MS = { muzzle: 120, impact: 350, explosion: 1100 };
+
+  // Smoke pours out of a tank after it's hit and keeps trailing while it spins out.
+  const SMOKE_MS = 1400;
+  let smoke = [];
+  let lastSmokeAt = 0;
+
+  function emitSmoke(x, y, now, heavy) {
+    smoke.push({
+      x: x + (Math.random() - 0.5) * 10,
+      y: y + (Math.random() - 0.5) * 10,
+      vx: (Math.random() - 0.5) * 14,
+      vy: -10 - Math.random() * 16,
+      r: (heavy ? 7 : 5) + Math.random() * 4,
+      dark: heavy || Math.random() < 0.5,
+      start: now,
+    });
+  }
+
+  function drawSmoke(now) {
+    smoke = smoke.filter((p) => now - p.start < SMOKE_MS);
+    smoke.forEach((p) => {
+      const t = (now - p.start) / SMOKE_MS;
+      const secs = (now - p.start) / 1000;
+      ctx.globalAlpha = (p.dark ? 0.55 : 0.4) * (1 - t);
+      ctx.fillStyle = p.dark ? '#1f1c19' : '#5a554e';
+      ctx.beginPath();
+      ctx.arc(p.x + p.vx * secs, p.y + p.vy * secs, p.r * (1 + t * 1.8), 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+  }
 
   function drawBlasts(now) {
     state.blasts = state.blasts.filter((b) => now - b.start < BLAST_MS[b.kind]);
@@ -1132,6 +1159,12 @@
       positions.push([p, x, y]);
     });
 
+    const emit = now - lastSmokeAt > 45;
+    if (emit) {
+      lastSmokeAt = now;
+      positions.forEach(([p, x, y]) => { if (p.status === 'hit') emitSmoke(x, y, now, false); });
+    }
+    drawSmoke(now);
     drawBlasts(now);
     // Bubbles go on top so a tank never covers another player's name.
     positions.forEach(([p, x, y]) => drawNameBubble(p, x, y - (p.hasFlag ? 30 : 16)));

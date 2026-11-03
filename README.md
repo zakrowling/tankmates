@@ -10,7 +10,7 @@ Based on [RetroTanks](https://github.com/enesser/retroTanks) by Eric J Nesser (M
 - **Capture the flag**: one flag starts in the channel through the centre bunker. Drive over it to grab it; you hold it (with a golden aura) until you're shot, then it reappears at a random spot away from the tanks. Holding the flag scores 1 point a second, and each hit scores 2.
 - **Battle**: drive with arrow keys or WASD, fire with Space or Enter. One shell in flight per tank. A hit tank explodes, spins out, then respawns in its corner with a moment of protection.
 - **Winning**: first to 60 points, or the highest score when the 3-minute timer runs out.
-- **Battlefield**: a 1200×720 mirrored arena (layout in [`public/arena.js`](public/arena.js)) with churned mud and grass, craters and old tread marks, sandbag bunkers and a concrete perimeter. Hits and shell impacts leave scorch marks for the rest of the game.
+- **Battlefield**: a 1200×720 mirrored arena (layout in [`public/arena.js`](public/arena.js)) with churned mud and grass and old tread marks, rubble heaps of broken brick and concrete, and a concrete perimeter. Hits and shell impacts leave scorch marks for the rest of the game, and hit tanks pour smoke while they spin out.
 - **Sound**: all synthesized with Web Audio: a diesel engine rumble and track clatter that revs as you drive, cannon fire, shell impacts, and big explosions with debris, panned and faded by distance. Plus flag pickup/drop jingles and a bugle start.
 - **Retro touches**: name bubbles (yours is yellow), tracers and muzzle flashes, and X toggles CRT scanlines.
 - **Logo**: put your title image at [`public/assets/image/tankmates-logo.png`](public/assets/image/README.md) and it replaces the text title automatically.
