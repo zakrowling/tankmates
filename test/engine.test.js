@@ -570,16 +570,16 @@ function drivable(walls, a, b) {
   return false;
 }
 
-test('map shuffle nudges a few shapes but keeps the lanes, centre and spacing', () => {
+test('map shuffle moves, turns, adds and removes shapes but keeps the lanes, tunnels and centre', () => {
   const { QUARTER, shuffleQuarter } = require('../public/arena.js');
   let changed = 0;
   for (let seed = 1; seed <= 300; seed++) {
     const q = shuffleQuarter(QUARTER, seeded(seed));
     assert.equal(q.length, QUARTER.length);
     q.forEach((row, y) => assert.equal(row.length, QUARTER[y].length));
-    // Same amount of wall, just moved around.
+    // Roughly the same amount of cover: a small block may go, a little extra may appear.
     const count = (rows) => rows.join('').split('#').length;
-    assert.equal(count(q), count(QUARTER));
+    assert.ok(Math.abs(count(q) - count(QUARTER)) <= 16, `wall count ${count(q)} vs ${count(QUARTER)} (seed ${seed})`);
     // Border, outer lanes and the centre bunker are untouched.
     for (let y = 0; y < QUARTER.length; y++) {
       for (let x = 0; x < QUARTER[0].length; x++) {
@@ -592,7 +592,7 @@ test('map shuffle nudges a few shapes but keeps the lanes, centre and spacing', 
     }
     if (q.join() !== QUARTER.join()) changed++;
   }
-  assert.ok(changed > 250, `most rounds get a different layout (${changed}/300)`);
+  assert.ok(changed > 295, `nearly every round gets a different layout (${changed}/300)`);
 });
 
 test('every shuffled map lets each tank reach the flag and every other spawn', () => {
@@ -658,4 +658,47 @@ test('shells fly through the tunnels and can hit tanks on the other side', () =>
   run(12);
   assert.equal(b.status, 'hit');
   assert.equal(a.score, HIT_POINTS);
+});
+
+// Every spot a tank fits (on a half-cell lattice) that's reachable from the given start.
+function reachableFrom(walls, start) {
+  const step = ARENA.cell / 2;
+  const key = (x, y) => `${x},${y}`;
+  const seen = new Set([key(start.x, start.y)]);
+  const queue = [[start.x, start.y]];
+  while (queue.length) {
+    const [x, y] = queue.pop();
+    for (let [nx, ny] of [[x + step, y], [x - step, y], [x, y + step], [x, y - step]]) {
+      nx = (nx + ARENA.width) % ARENA.width;
+      ny = (ny + ARENA.height) % ARENA.height;
+      if (seen.has(key(nx, ny)) || circleHitsWall(nx, ny, TANK_RADIUS, walls)) continue;
+      seen.add(key(nx, ny));
+      queue.push([nx, ny]);
+    }
+  }
+  return seen;
+}
+
+test('shuffled maps: no blocked tunnels and no sealed-off pockets, so the flag is always reachable', () => {
+  const { QUARTER, shuffleQuarter, buildArena } = require('../public/arena.js');
+  const step = ARENA.cell / 2;
+  const w = ARENA.width;
+  const h = ARENA.height;
+  // Just inside each tunnel doorway: top, bottom, left, right.
+  const doorways = [{ x: w / 2, y: step }, { x: w / 2, y: h - step }, { x: step, y: h / 2 }, { x: w - step, y: h / 2 }];
+  for (let seed = 1; seed <= 300; seed++) {
+    const { walls } = buildArena(shuffleQuarter(QUARTER, seeded(seed)));
+    const reach = reachableFrom(walls, ARENA.spawns[0]);
+    for (const d of doorways) {
+      assert.ok(!circleHitsWall(d.x, d.y, TANK_RADIUS, walls), `doorway ${d.x},${d.y} clear (seed ${seed})`);
+      assert.ok(reach.has(`${d.x},${d.y}`), `doorway ${d.x},${d.y} reachable (seed ${seed})`);
+    }
+    assert.ok(reach.has(`${FLAG_START.x},${FLAG_START.y}`), `flag reachable (seed ${seed})`);
+    // Anywhere a tank fits can be driven to, so a respawned flag is never stranded.
+    for (let y = 0; y < h; y += step) {
+      for (let x = 0; x < w; x += step) {
+        if (!circleHitsWall(x, y, TANK_RADIUS, walls)) assert.ok(reach.has(`${x},${y}`), `pocket at ${x},${y} (seed ${seed})`);
+      }
+    }
+  }
 });
