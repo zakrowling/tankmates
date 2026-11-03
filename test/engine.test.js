@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   GameRoom, generateRoomCode, ARENA, TANK_RADIUS, WIN_SCORE, GAME_SECONDS, TICK_RATE,
-  SPIN_TICKS, INVULNERABLE_TICKS, BULLET_LIFE_TICKS, circleHitsWall, wallRect,
+  SPIN_TICKS, INVULNERABLE_TICKS, BULLET_LIFE_TICKS, circleHitsWall, wallRect, wallRects,
   HIT_POINTS, HOLD_TICKS_PER_POINT, FLAG_START, FLAG_SPOTS, WALL_HP, MINE_ARM_TICKS,
 } = require('../public/engine.js');
 
@@ -494,4 +494,21 @@ test('the outer concrete wall is half a cell thick', () => {
   assert.deepEqual(wallRect(ARENA.cols - 1, 5), [ARENA.width - c / 2, 5 * c, ARENA.width, 6 * c]);
   assert.deepEqual(wallRect(5, 0), [5 * c, 0, 6 * c, c / 2]);
   assert.equal(circleHitsWall(c / 2 + TANK_RADIUS + 0.5, ARENA.height / 2 - 100, TANK_RADIUS), false);
+});
+
+test('outer wall corners are solid L shapes with no gaps', () => {
+  const c = ARENA.cell;
+  const corners = [[0, 0], [ARENA.cols - 1, 0], [0, ARENA.rows - 1], [ARENA.cols - 1, ARENA.rows - 1]];
+  for (const [cx, cy] of corners) assert.equal(wallRects(cx, cy).length, 2);
+  // Every point along the thin perimeter strips is solid, including right next to the corners.
+  for (let x = 1; x < ARENA.width; x += 3) {
+    assert.ok(circleHitsWall(x, c / 4, 1), `top strip at ${x}`);
+    assert.ok(circleHitsWall(x, ARENA.height - c / 4, 1), `bottom strip at ${x}`);
+  }
+  for (let y = 1; y < ARENA.height; y += 3) {
+    assert.ok(circleHitsWall(c / 4, y, 1), `left strip at ${y}`);
+    assert.ok(circleHitsWall(ARENA.width - c / 4, y, 1), `right strip at ${y}`);
+  }
+  // The inner quarter of a corner cell is open floor.
+  assert.equal(circleHitsWall(c * 0.75, c * 0.75, 1), false);
 });

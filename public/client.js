@@ -939,9 +939,26 @@
     return [x0, y0, x1, y1];
   }
 
+  // Same as the engine's wallRects: outer-wall corners are an L of the two strips meeting there.
+  function wallRects(arena, x, y) {
+    const c = arena.cell;
+    const outerX = x === 0 || x === arena.cols - 1;
+    const outerY = y === 0 || y === arena.rows - 1;
+    if (!outerX || !outerY) return [wallRect(arena, x, y)];
+    const vx0 = x === 0 ? 0 : (x + 1) * c - c / 2;
+    const hy0 = y === 0 ? 0 : (y + 1) * c - c / 2;
+    return [
+      [vx0, y * c, vx0 + c / 2, (y + 1) * c],
+      [x * c, hy0, (x + 1) * c, hy0 + c / 2],
+    ];
+  }
+
   function paintConcrete(g, arena, x, y) {
+    for (const rect of wallRects(arena, x, y)) paintConcreteRect(g, x, y, rect);
+  }
+
+  function paintConcreteRect(g, x, y, [x0, y0, x1, y1]) {
     const rand = seededRandom(x * 7919 + y * 104729 + 3);
-    const [x0, y0, x1, y1] = wallRect(arena, x, y);
     const w = x1 - x0;
     const h = y1 - y0;
     g.fillStyle = '#6f6a5e';
@@ -1078,8 +1095,7 @@
     for (let y = 0; y < arena.rows; y++) {
       for (let x = 0; x < arena.cols; x++) {
         if (arena.walls[y][x] !== 1) continue;
-        const [x0, y0, x1, y1] = wallRect(arena, x, y);
-        g.fillRect(x0, y0, x1 - x0, y1 - y0);
+        for (const [x0, y0, x1, y1] of wallRects(arena, x, y)) g.fillRect(x0, y0, x1 - x0, y1 - y0);
       }
     }
     // Keep only the shadow, not the black blocks themselves (they sit under the wall layer anyway).

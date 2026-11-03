@@ -79,12 +79,26 @@
     return [x0, y0, x1, y1];
   }
 
+  // All solid rectangles of a wall cell. A corner of the outer wall is an L: the two half-thick
+  // strips that meet there, so the perimeter stays closed.
+  function wallRects(cx, cy) {
+    const c = ARENA.cell;
+    const outerX = cx === 0 || cx === ARENA.cols - 1;
+    const outerY = cy === 0 || cy === ARENA.rows - 1;
+    if (!outerX || !outerY) return [wallRect(cx, cy)];
+    const vx0 = cx === 0 ? 0 : (cx + 1) * c - c / 2;
+    const hy0 = cy === 0 ? 0 : (cy + 1) * c - c / 2;
+    return [
+      [vx0, cy * c, vx0 + c / 2, (cy + 1) * c],
+      [cx * c, hy0, (cx + 1) * c, hy0 + c / 2],
+    ];
+  }
+
   function isWallAt(px, py, walls = ARENA.walls) {
     const { cx, cy } = wallCellAt(px, py);
     if (cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols) return true;
     if (walls[cy][cx] !== 1) return false;
-    const [x0, y0, x1, y1] = wallRect(cx, cy);
-    return px >= x0 && px < x1 && py >= y0 && py < y1;
+    return wallRects(cx, cy).some(([x0, y0, x1, y1]) => px >= x0 && px < x1 && py >= y0 && py < y1);
   }
 
   // Does a circle overlap any wall cell?
@@ -97,12 +111,14 @@
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
         if (cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols || walls[cy][cx] === 1) {
-          const [x0, y0, x1, y1] = cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols
-            ? [cx * c, cy * c, (cx + 1) * c, (cy + 1) * c]
-            : wallRect(cx, cy);
-          const nx = Math.max(x0, Math.min(x, x1));
-          const ny = Math.max(y0, Math.min(y, y1));
-          if ((x - nx) ** 2 + (y - ny) ** 2 < r * r) return true;
+          const rects = cy < 0 || cy >= ARENA.rows || cx < 0 || cx >= ARENA.cols
+            ? [[cx * c, cy * c, (cx + 1) * c, (cy + 1) * c]]
+            : wallRects(cx, cy);
+          for (const [x0, y0, x1, y1] of rects) {
+            const nx = Math.max(x0, Math.min(x, x1));
+            const ny = Math.max(y0, Math.min(y, y1));
+            if ((x - nx) ** 2 + (y - ny) ** 2 < r * r) return true;
+          }
         }
       }
     }
@@ -569,5 +585,6 @@
     BULLET_LIFE_TICKS,
     circleHitsWall,
     wallRect,
+    wallRects,
   };
 });
