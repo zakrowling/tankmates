@@ -7,19 +7,20 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cg fill=%22%23cf5353%22%3E%3Crect x=%222%22 y=%223%22 width=%2222%22 height=%226%22/%3E%3Crect x=%222%22 y=%2223%22 width=%2222%22 height=%226%22/%3E%3Crect x=%228%22 y=%229%22 width=%2214%22 height=%2214%22/%3E%3Crect x=%2215%22 y=%2214%22 width=%2216%22 height=%224%22/%3E%3C/g%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: #0b0d08;
       color: #fff;
-      font-family: 'Press Start 2P', 'Courier New', monospace;
+      font-family: 'Geist', system-ui, -apple-system, sans-serif;
+      font-weight: 500;
       display: flex;
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
       padding: 40px 20px 20px;
-      font-size: 10px;
+      font-size: 14px;
       line-height: 1.8;
     }
     header { text-align: center; margin-bottom: 20px; }
@@ -48,7 +49,7 @@
     }
     .btn {
       background: #ffe600; color: #000; border: none; padding: 12px 20px;
-      font-family: inherit; font-size: 11px; border-radius: 6px; cursor: pointer;
+      font-family: inherit; font-weight: 700; font-size: 15px; border-radius: 6px; cursor: pointer;
       width: 100%; margin-top: 10px;
     }
     .btn:hover { filter: brightness(1.1); }
@@ -70,10 +71,10 @@
     .room-display.long { font-size: 16px; letter-spacing: 3px; }
     .share { display: flex; gap: 8px; align-items: center; }
     .share input[type="text"] {
-      flex: 1; margin: 0; font-size: 9px; letter-spacing: 0; text-transform: none; text-align: left; padding: 10px;
+      flex: 1; margin: 0; font-size: 13px; letter-spacing: 0; text-transform: none; text-align: left; padding: 10px;
     }
     .share .btn { width: auto; margin: 0; padding: 10px 14px; }
-    .share-hint { margin-bottom: 12px; font-size: 8px; }
+    .share-hint { margin-bottom: 12px; font-size: 11px; }
     .room-label { margin-top: 16px; }
     #lobby-card.link-room .room-details,
     #lobby-card.link-room #setup-view { display: none; }
@@ -87,14 +88,14 @@
     .slot {
       background: #000; border: 2px dashed #3a3a2a; border-radius: 10px;
       padding: 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 6px;
-      min-height: 130px; justify-content: center; color: #444; font-size: 9px;
+      min-height: 130px; justify-content: center; color: #444; font-size: 13px;
     }
     .slot.filled { border-style: solid; }
     .slot.you { box-shadow: 0 0 12px currentColor; }
     .slot canvas { width: 64px; height: 64px; background: transparent; }
-    .slot .slot-num { color: #666; font-size: 8px; }
-    .slot .slot-name { font-size: 10px; }
-    .slot .slot-tag { font-size: 7px; color: #aaa; min-height: 12px; }
+    .slot .slot-num { color: #666; font-size: 11px; }
+    .slot .slot-name { font-size: 14px; }
+    .slot .slot-tag { font-size: 10px; color: #aaa; min-height: 12px; }
     .error { color: #ff5555; min-height: 20px; margin-top: 10px; }
     .hint { color: #888; margin-top: 10px; }
 
@@ -108,7 +109,7 @@
     }
     .hud-group { display: flex; gap: 10px; }
     .hud-group.right { justify-content: flex-end; }
-    #timer { font-size: 10px; color: #fff; }
+    #timer { font-size: 14px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
     #timer.low { color: #ff5555; }
     .score-tag {
       padding: 4px 10px; border-radius: 6px; background: #12160c; border: 2px solid currentColor;
@@ -116,8 +117,8 @@
     }
     .score-tag.right { flex-direction: row-reverse; }
     .score-tag.empty { visibility: hidden; }
-    .score-tag .tag-name { font-size: 8px; }
-    .score-tag .tag-score { font-size: 10px; color: #fff; }
+    .score-tag .tag-name { font-size: 11px; font-weight: 600; }
+    .score-tag .tag-score { font-size: 14px; font-weight: 700; color: #fff; }
     .score-tag .tag-flag { font-size: 14px; color: #ffd740; font-family: sans-serif; visibility: hidden; }
     canvas { background: #000; border-radius: 6px; image-rendering: pixelated; }
     /* The arena is wider than most game boards; shrink it to fit smaller screens. */

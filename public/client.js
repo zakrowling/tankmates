@@ -1321,7 +1321,7 @@
   }
 
   function drawNameBubble(p, cx, top) {
-    ctx.font = '7px "Press Start 2P", monospace';
+    ctx.font = '600 10px Geist, sans-serif';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
     const w = ctx.measureText(p.name).width + 14;
