@@ -54,7 +54,7 @@
       comp.threshold.value = -14;
       comp.ratio.value = 6;
       master = audioCtx.createGain();
-      master.gain.value = 0.9;
+      master.gain.value = soundPrefs.sfx ? SFX_GAIN : 0;
       master.connect(comp).connect(audioCtx.destination);
       noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
       const data = noiseBuffer.getChannelData(0);
@@ -104,8 +104,40 @@
         el.pause();
         el.currentTime = 0;
       },
+      setMuted(m) {
+        el.muted = m;
+      },
     };
   })();
+
+  // ---------- Music and sound effects on/off ----------
+  // Two buttons beside the clock. Each player's choice is remembered on their device and only
+  // affects them. Effects all go through the master gain; music is muted on its own player.
+  const soundPrefs = (() => {
+    const read = (k) => { try { return localStorage.getItem(`tankmates-${k}`) !== 'off'; } catch { return true; } };
+    return { music: read('music'), sfx: read('sfx') };
+  })();
+  const SFX_GAIN = 0.9;
+  function applySoundPrefs() {
+    if (master) master.gain.value = soundPrefs.sfx ? SFX_GAIN : 0;
+    music.setMuted(!soundPrefs.music);
+    [['music-toggle', soundPrefs.music, 'Music'], ['sfx-toggle', soundPrefs.sfx, 'Sound effects']].forEach(([id, on, label]) => {
+      const btn = document.getElementById(id);
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('off', !on);
+      btn.title = `${label} ${on ? 'on' : 'off'} (click to turn ${on ? 'off' : 'on'})`;
+    });
+  }
+  [['music-toggle', 'music'], ['sfx-toggle', 'sfx']].forEach(([id, key]) => {
+    document.getElementById(id).addEventListener('click', (e) => {
+      soundPrefs[key] = !soundPrefs[key];
+      try { localStorage.setItem(`tankmates-${key}`, soundPrefs[key] ? 'on' : 'off'); } catch { /* private mode */ }
+      applySoundPrefs();
+      // A mouse click shouldn't leave focus here, or Space would toggle it again instead of playing.
+      if (e.detail) e.currentTarget.blur();
+    });
+  });
+  applySoundPrefs();
 
   // Sounds further from your tank are quieter and panned left/right by where they happen.
   function spatial(ac, x, y) {
@@ -1350,7 +1382,7 @@
   }
 
   window.addEventListener('keydown', (e) => {
-    if (!state.playing) return;
+    if (!state.playing || (e.target.closest && e.target.closest('.sound-toggle'))) return;
     const control = KEY_TO_CONTROL[e.key];
     if (!control) return;
     e.preventDefault();

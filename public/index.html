@@ -110,6 +110,19 @@
     .hud-group { display: flex; gap: 10px; }
     .hud-group.right { justify-content: flex-end; }
     #timer { font-size: 14px; color: #fff; font-variant-numeric: tabular-nums; }
+    /* Music and sound effects toggles either side of the clock. */
+    .hud-centre { display: flex; align-items: center; gap: 12px; }
+    .sound-toggle {
+      width: 30px; height: 30px; padding: 5px; border-radius: 6px; cursor: pointer;
+      background: #12160c; color: #f5e6c8; border: 2px solid #a97d5d;
+    }
+    .sound-toggle:hover { background: #1d2414; }
+    .sound-toggle:focus-visible { outline: 2px solid #ffe600; outline-offset: 2px; }
+    .sound-toggle svg { width: 100%; height: 100%; display: block; }
+    .sound-toggle .off-slash { display: none; }
+    .sound-toggle.off { color: #8a8070; border-color: #5a4a3d; }
+    .sound-toggle.off .off-slash { display: inline; }
+    .sound-toggle.off .on-waves { display: none; }
     /* Last 10 seconds: bright red with a pulse on every tick. */
     #timer.low { color: #ff3b30; }
     #timer.pulse { animation: timer-pulse 0.45s ease-out; }
@@ -186,7 +199,15 @@
         <div class="score-tag empty" data-slot="1"></div>
         <div class="score-tag empty" data-slot="2"></div>
       </div>
-      <div id="timer"></div>
+      <div class="hud-centre">
+        <button type="button" class="sound-toggle" id="music-toggle" aria-pressed="true" aria-label="Music" title="Music on/off">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="17.5" cy="16" r="2.5" fill="currentColor"/><path class="off-slash" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        </button>
+        <div id="timer"></div>
+        <button type="button" class="sound-toggle" id="sfx-toggle" aria-pressed="true" aria-label="Sound effects" title="Sound effects on/off">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path class="on-waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="off-slash" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        </button>
+      </div>
       <div class="hud-group right">
         <div class="score-tag right empty" data-slot="3"></div>
         <div class="score-tag right empty" data-slot="4"></div>
