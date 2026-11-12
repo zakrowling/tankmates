@@ -269,6 +269,7 @@
   };
 
   function playSound(key, x, y, arg) {
+    if (state.away) return;
     const ac = getAudioCtx();
     if (!ac || !SFX[key]) return;
     SFX[key](ac, spatial(ac, x, y), arg);
@@ -859,6 +860,13 @@
     resetToSetup();
   });
   $('exit-btn').addEventListener('click', showLobby);
+
+  // Home: just you back to the lobby screen, still in the room; the game carries on for everyone
+  // else, without its sounds or game-over screen, and the next game brings you back in.
+  $('game-home').addEventListener('click', () => {
+    state.away = true;
+    showLobby();
+  });
   // Link rooms: leave and go back to the home screen to create or join a different room.
   $('home-btn').addEventListener('click', () => {
     socket.emit('leaveRoom');
@@ -1291,6 +1299,7 @@
   }
 
   socket.on('gameStarted', (payload) => {
+    state.away = false;
     applyLobby(payload);
     state.arena = payload.arena;
     state.tickMs = 1000 / payload.tickRate;
@@ -1379,6 +1388,7 @@
     state.playing = false;
     releaseControls();
     engine.stop();
+    if (state.away) return;
     const winner = standings.find((p) => p.id === winnerId);
     let title = 'TIME UP!';
     if (reason === 'win' && winner) title = winner.id === state.playerId ? 'YOU WIN!' : `${winner.name} WINS!`;
