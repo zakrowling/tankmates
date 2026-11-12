@@ -108,9 +108,11 @@
       width: 100%; margin-bottom: 6px;
     }
     .hud-group { display: flex; gap: 10px; }
-    .hud-group.right { justify-content: flex-end; }
+    .hud-group.right { justify-content: flex-end; align-items: center; }
+    /* Music and sound effects, together at the far right. */
+    .sound-toggles { display: flex; align-items: center; gap: 8px; margin-left: 10px; }
     #timer { font-size: 14px; color: #fff; font-variant-numeric: tabular-nums; }
-    /* Music and sound effects toggles either side of the clock. */
+    /* Home beside the clock. */
     .hud-centre { display: flex; align-items: center; gap: 12px; }
     .sound-toggle {
       width: 30px; height: 30px; padding: 5px; border-radius: 6px; cursor: pointer;
@@ -201,17 +203,19 @@
       </div>
       <div class="hud-centre">
         <button type="button" class="sound-toggle" id="game-home" aria-label="Back to the lobby" title="Back to the lobby"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5M5.5 9.5V20h5v-6h3v6h5V9.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        <button type="button" class="sound-toggle" id="music-toggle" aria-pressed="true" aria-label="Music" title="Music on/off">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="17.5" cy="16" r="2.5" fill="currentColor"/><path class="off-slash" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
-        </button>
         <div id="timer"></div>
-        <button type="button" class="sound-toggle" id="sfx-toggle" aria-pressed="true" aria-label="Sound effects" title="Sound effects on/off">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path class="on-waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="off-slash" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
-        </button>
       </div>
       <div class="hud-group right">
         <div class="score-tag right empty" data-slot="3"></div>
         <div class="score-tag right empty" data-slot="4"></div>
+        <div class="sound-toggles">
+          <button type="button" class="sound-toggle" id="music-toggle" aria-pressed="true" aria-label="Music" title="Music on/off">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="17.5" cy="16" r="2.5" fill="currentColor"/><path class="off-slash" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+          </button>
+          <button type="button" class="sound-toggle" id="sfx-toggle" aria-pressed="true" aria-label="Sound effects" title="Sound effects on/off">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path class="on-waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="off-slash" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+          </button>
+        </div>
       </div>
     </div>
     <div class="arena-wrap"><canvas id="game-canvas" width="960" height="576"></canvas></div>
