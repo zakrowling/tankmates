@@ -153,6 +153,12 @@
     }
     #game-over h3 { color: #ffe600; margin-bottom: 12px; }
     .arena-wrap { position: relative; max-width: 100%; line-height: 0; }
+    /* The line of instructions under the game runs the full width of the page, centred (100vw is
+       scaled by the page's zoom, so it's divided back out). */
+    #game-view > .hint {
+      width: calc(100vw / 0.81); max-width: none; box-sizing: border-box; padding: 0 24px;
+      align-self: center; text-align: center;
+    }
   </style>
 </head>
 <body>
